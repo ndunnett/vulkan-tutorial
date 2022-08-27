@@ -62,6 +62,7 @@ private:
         }
 
         pick_physical_device();
+        create_logical_device();
     }
 
     void main_loop() {
@@ -71,6 +72,8 @@ private:
     }
 
     void cleanup() {
+        vkDestroyDevice(device, nullptr);
+
         if (enable_validation_layers) {
             destroy_debug_messenger();
         }
@@ -151,6 +154,40 @@ private:
         }
 
         physical_device = best_device.first;
+    }
+
+    void create_logical_device() {
+        QueueFamilyIndices indices = find_queue_families(physical_device);
+        float queue_priority = 1.0f;
+        VkPhysicalDeviceFeatures device_features{};
+
+        VkDeviceQueueCreateInfo queue_ci{};
+        queue_ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_ci.queueFamilyIndex = indices.graphics_family.value();
+        queue_ci.queueCount = 1;
+        queue_ci.pQueuePriorities = &queue_priority;
+
+        VkDeviceCreateInfo device_ci{};
+        device_ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_ci.pQueueCreateInfos = &queue_ci;
+        device_ci.queueCreateInfoCount = 1;
+        device_ci.pEnabledFeatures = &device_features;
+        device_ci.enabledExtensionCount = 0;
+
+        if (enable_validation_layers) {
+            device_ci.enabledLayerCount = validation_layers.size();
+            device_ci.ppEnabledLayerNames = validation_layers.data();
+        } else {
+            device_ci.enabledLayerCount = 0;
+        }
+
+        if (vkCreateDevice(physical_device, &device_ci, nullptr, &device) !=
+            VK_SUCCESS) {
+            throw std::runtime_error("failed to create logical device!");
+        }
+
+        vkGetDeviceQueue(device, indices.graphics_family.value(), 0,
+                         &graphics_queue);
     }
 
     void setup_debug_messenger() {
@@ -295,6 +332,8 @@ private:
     GLFWwindow* window = nullptr;
     VkDebugUtilsMessengerEXT debug_messenger{};
     VkPhysicalDevice physical_device{ VK_NULL_HANDLE };
+    VkDevice device{};
+    VkQueue graphics_queue{};
 };
 
 int main() {
