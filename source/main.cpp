@@ -4,8 +4,9 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
-#include <span>
+#include <optional>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 constexpr uint32_t WIDTH = 800;
@@ -27,6 +28,14 @@ constexpr bool using_molten_vk = true;
 #else
 constexpr bool using_molten_vk = false;
 #endif
+
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphics_family;
+
+    bool is_complete() {
+        return graphics_family.has_value();
+    }
+};
 
 class HelloTriangleApplication {
 public:
@@ -51,6 +60,8 @@ private:
         if (enable_validation_layers) {
             setup_debug_messenger();
         }
+
+        pick_physical_device();
     }
 
     void main_loop() {
@@ -113,6 +124,35 @@ private:
         }
     }
 
+    void pick_physical_device() {
+        uint32_t device_count = 0;
+        vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
+
+        if (device_count == 0) {
+            throw std::runtime_error(
+                "failed to find GPUs with Vulkan support!");
+        }
+
+        std::vector<VkPhysicalDevice> devices(device_count);
+        vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
+
+        std::pair<VkPhysicalDevice, uint32_t> best_device{ VK_NULL_HANDLE, 0 };
+
+        for (const auto& device : devices) {
+            uint32_t suitability = rate_device_suitability(device);
+            if (suitability > best_device.second) {
+                best_device = { device, suitability };
+                break;
+            }
+        }
+
+        if (best_device.first == VK_NULL_HANDLE) {
+            throw std::runtime_error("failed to find a suitable GPU!");
+        }
+
+        physical_device = best_device.first;
+    }
+
     void setup_debug_messenger() {
         auto ci = debug_messenger_create_info();
         auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
@@ -133,6 +173,59 @@ private:
         if (func != nullptr) {
             func(instance, debug_messenger, nullptr);
         }
+    }
+
+    static QueueFamilyIndices
+    find_queue_families(const VkPhysicalDevice& device) {
+        QueueFamilyIndices indices{};
+
+        uint32_t queue_family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count,
+                                                 nullptr);
+
+        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count,
+                                                 queue_families.data());
+
+        int i = 0;
+        for (const auto& queue_family : queue_families) {
+            if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphics_family = i;
+            }
+
+            if (indices.is_complete()) {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
+    }
+
+    static uint32_t rate_device_suitability(const VkPhysicalDevice& device) {
+        if (!find_queue_families(device).is_complete()) {
+            return 0;
+        }
+
+        VkPhysicalDeviceProperties properties{};
+        VkPhysicalDeviceFeatures features{};
+        vkGetPhysicalDeviceProperties(device, &properties);
+        vkGetPhysicalDeviceFeatures(device, &features);
+
+        uint32_t suitability = 0;
+
+        switch (properties.deviceType) {
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: suitability += 10000;
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: suitability += 5000;
+            case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: suitability += 2000;
+            case VK_PHYSICAL_DEVICE_TYPE_CPU: suitability += 1000;
+            case VK_PHYSICAL_DEVICE_TYPE_OTHER: suitability += 1;
+            default: suitability += 0;
+        };
+
+        suitability += properties.limits.maxImageDimension2D;
+        return suitability;
     }
 
     static VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info() {
@@ -200,7 +293,8 @@ private:
 
     VkInstance instance{};
     GLFWwindow* window = nullptr;
-    VkDebugUtilsMessengerEXT debug_messenger;
+    VkDebugUtilsMessengerEXT debug_messenger{};
+    VkPhysicalDevice physical_device{ VK_NULL_HANDLE };
 };
 
 int main() {
