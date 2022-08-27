@@ -22,21 +22,13 @@ FetchContent_Declare(
 add_library(dependencies INTERFACE)
 
 # Add Vulkan to interface library
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    find_package(Vulkan REQUIRED COMPONENTS MoltenVK)
-    target_link_libraries(dependencies INTERFACE
-        Vulkan::MoltenVK
-    )
-else ()
-    find_package(Vulkan REQUIRED)
-    target_link_libraries(dependencies INTERFACE
-        Vulkan::Vulkan
-    )
-endif ()
+find_package(Vulkan REQUIRED)
+target_link_libraries(dependencies INTERFACE
+    Vulkan::Vulkan
+)
 target_include_directories(dependencies SYSTEM INTERFACE
     ${Vulkan_INCLUDE_DIR}
 )
-set(GLFW_VULKAN_STATIC ON CACHE BOOL "" FORCE)
 
 # Build GLM library and link to interface library
 FetchContent_MakeAvailable(glm_repo)
