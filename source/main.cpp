@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -31,9 +32,10 @@ constexpr bool using_molten_vk = false;
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphics_family;
+    std::optional<uint32_t> present_family;
 
     bool is_complete() {
-        return graphics_family.has_value();
+        return graphics_family.has_value() && present_family.has_value();
     }
 };
 
@@ -61,6 +63,7 @@ private:
             setup_debug_messenger();
         }
 
+        create_surface();
         pick_physical_device();
         create_logical_device();
     }
@@ -78,6 +81,7 @@ private:
             destroy_debug_messenger();
         }
 
+        vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -127,6 +131,13 @@ private:
         }
     }
 
+    void create_surface() {
+        if (glfwCreateWindowSurface(instance, window, nullptr, &surface) !=
+            VK_SUCCESS) {
+            throw std::runtime_error("failed to create window surface!");
+        }
+    }
+
     void pick_physical_device() {
         uint32_t device_count = 0;
         vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
@@ -142,7 +153,7 @@ private:
         std::pair<VkPhysicalDevice, uint32_t> best_device{ VK_NULL_HANDLE, 0 };
 
         for (const auto& device : devices) {
-            uint32_t suitability = rate_device_suitability(device);
+            uint32_t suitability = rate_device_suitability(device, surface);
             if (suitability > best_device.second) {
                 best_device = { device, suitability };
                 break;
@@ -157,20 +168,30 @@ private:
     }
 
     void create_logical_device() {
-        QueueFamilyIndices indices = find_queue_families(physical_device);
-        float queue_priority = 1.0f;
+        QueueFamilyIndices indices =
+            find_queue_families(physical_device, surface);
+        float queue_priority = 1.0F;
         VkPhysicalDeviceFeatures device_features{};
 
-        VkDeviceQueueCreateInfo queue_ci{};
-        queue_ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_ci.queueFamilyIndex = indices.graphics_family.value();
-        queue_ci.queueCount = 1;
-        queue_ci.pQueuePriorities = &queue_priority;
+        std::set<uint32_t> unique_queue_families = {
+            indices.graphics_family.value(), indices.present_family.value()
+        };
+
+        std::vector<VkDeviceQueueCreateInfo> queue_cis;
+
+        for (auto queue_family : unique_queue_families) {
+            VkDeviceQueueCreateInfo queue_ci{};
+            queue_ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queue_ci.queueFamilyIndex = queue_family;
+            queue_ci.queueCount = 1;
+            queue_ci.pQueuePriorities = &queue_priority;
+            queue_cis.push_back(queue_ci);
+        }
 
         VkDeviceCreateInfo device_ci{};
         device_ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_ci.pQueueCreateInfos = &queue_ci;
-        device_ci.queueCreateInfoCount = 1;
+        device_ci.pQueueCreateInfos = queue_cis.data();
+        device_ci.queueCreateInfoCount = queue_cis.size();
         device_ci.pEnabledFeatures = &device_features;
         device_ci.enabledExtensionCount = 0;
 
@@ -188,6 +209,8 @@ private:
 
         vkGetDeviceQueue(device, indices.graphics_family.value(), 0,
                          &graphics_queue);
+        vkGetDeviceQueue(device, indices.present_family.value(), 0,
+                         &present_queue);
     }
 
     void setup_debug_messenger() {
@@ -213,7 +236,8 @@ private:
     }
 
     static QueueFamilyIndices
-    find_queue_families(const VkPhysicalDevice& device) {
+    find_queue_families(const VkPhysicalDevice& device,
+                        const VkSurfaceKHR& surface) {
         QueueFamilyIndices indices{};
 
         uint32_t queue_family_count = 0;
@@ -230,6 +254,13 @@ private:
                 indices.graphics_family = i;
             }
 
+            VkBool32 present_support = 0;
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface,
+                                                 &present_support);
+            if (present_support) {
+                indices.present_family = i;
+            }
+
             if (indices.is_complete()) {
                 break;
             }
@@ -240,8 +271,9 @@ private:
         return indices;
     }
 
-    static uint32_t rate_device_suitability(const VkPhysicalDevice& device) {
-        if (!find_queue_families(device).is_complete()) {
+    static uint32_t rate_device_suitability(const VkPhysicalDevice& device,
+                                            const VkSurfaceKHR& surface) {
+        if (!find_queue_families(device, surface).is_complete()) {
             return 0;
         }
 
@@ -334,6 +366,8 @@ private:
     VkPhysicalDevice physical_device{ VK_NULL_HANDLE };
     VkDevice device{};
     VkQueue graphics_queue{};
+    VkQueue present_queue{};
+    VkSurfaceKHR surface{};
 };
 
 int main() {
