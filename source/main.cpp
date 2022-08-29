@@ -42,7 +42,7 @@ struct QueueFamilyIndices {
 };
 
 struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceCapabilitiesKHR capabilities{};
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> present_modes;
 };
@@ -75,6 +75,7 @@ private:
         pick_physical_device();
         create_logical_device();
         create_swap_chain();
+        create_image_views();
     }
 
     void main_loop() {
@@ -84,6 +85,10 @@ private:
     }
 
     void cleanup() {
+        for (auto* image_view : swap_chain_image_views) {
+            vkDestroyImageView(device, image_view, nullptr);
+        }
+
         vkDestroySwapchainKHR(device, swap_chain, nullptr);
         vkDestroyDevice(device, nullptr);
 
@@ -285,6 +290,31 @@ private:
         vkGetSwapchainImagesKHR(device, swap_chain, &image_count, nullptr);
         swap_chain_images.resize(image_count);
         vkGetSwapchainImagesKHR(device, swap_chain, &image_count, swap_chain_images.data());
+    }
+
+    void create_image_views() {
+        swap_chain_image_views.resize(swap_chain_images.size());
+
+        for (size_t i = 0; i < swap_chain_images.size(); i++) {
+            VkImageViewCreateInfo ci{};
+            ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            ci.image = swap_chain_images[i];
+            ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            ci.format = swap_chain_image_format;
+            ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            ci.subresourceRange.baseMipLevel = 0;
+            ci.subresourceRange.levelCount = 1;
+            ci.subresourceRange.baseArrayLayer = 0;
+            ci.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(device, &ci, nullptr, &swap_chain_image_views[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create image views!");
+            }
+        }
     }
 
     static SwapChainSupportDetails query_swap_chain_support(const VkPhysicalDevice& device,
@@ -510,6 +540,7 @@ private:
     std::vector<VkImage> swap_chain_images;
     VkFormat swap_chain_image_format{};
     VkExtent2D swap_chain_extent{};
+    std::vector<VkImageView> swap_chain_image_views;
 };
 
 int main() {
