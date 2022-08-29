@@ -23,3 +23,15 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE dependencies)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+
+
+# compile shaders
+add_custom_target(shaders ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/source/shaders
+    ${CMAKE_BINARY_DIR}/shaders
+)
+add_custom_command(TARGET shaders
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/shaders
+    COMMAND ./compile.sh
+)
