@@ -16,9 +16,15 @@
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
 constexpr std::array validation_layers{ "VK_LAYER_KHRONOS_validation" };
-constexpr auto create_debug_msg_ext{ "vkCreateDebugUtilsMessengerEXT" };
-constexpr auto destroy_debug_msg_ext{ "vkDestroyDebugUtilsMessengerEXT" };
-constexpr std::array device_extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+constexpr std::array required_device_extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+constexpr std::string_view create_debug_msg_ext{ "vkCreateDebugUtilsMessengerEXT" };
+constexpr std::string_view destroy_debug_msg_ext{ "vkDestroyDebugUtilsMessengerEXT" };
+constexpr std::array instance_portability_extensions{
+    std::string_view("VK_KHR_get_physical_device_properties2"),
+};
+constexpr std::array device_portability_extensions{
+    std::string_view("VK_KHR_portability_subset"),
+};
 
 #ifdef NDEBUG
 constexpr bool enable_validation_layers = false;
@@ -196,6 +202,20 @@ private:
             queue_cis.push_back(queue_ci);
         }
 
+        std::vector device_extensions(required_device_extensions.begin(), required_device_extensions.end());
+        uint32_t count = 0;
+        vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
+        std::vector<VkExtensionProperties> available_extensions(count);
+        vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, available_extensions.data());
+
+        for (auto available_extension : available_extensions) {
+            for (auto portability_extension : device_portability_extensions) {
+                if (std::string_view(available_extension.extensionName) == portability_extension) {
+                    device_extensions.emplace_back(portability_extension.data());
+                }
+            }
+        }
+
         VkDeviceCreateInfo device_ci{};
         device_ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_ci.pQueueCreateInfos = queue_cis.data();
@@ -222,7 +242,7 @@ private:
     void setup_debug_messenger() {
         auto ci = debug_messenger_create_info();
         auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-            vkGetInstanceProcAddr(instance, create_debug_msg_ext));
+            vkGetInstanceProcAddr(instance, create_debug_msg_ext.data()));
 
         if (func != nullptr && func(instance, &ci, nullptr, &debug_messenger) == VK_SUCCESS) {
             return;
@@ -233,7 +253,7 @@ private:
 
     void destroy_debug_messenger() {
         auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-            vkGetInstanceProcAddr(instance, destroy_debug_msg_ext));
+            vkGetInstanceProcAddr(instance, destroy_debug_msg_ext.data()));
 
         if (func != nullptr) {
             func(instance, debug_messenger, nullptr);
@@ -464,13 +484,14 @@ private:
         std::vector<VkExtensionProperties> available_extensions(count);
         vkEnumerateDeviceExtensionProperties(device, nullptr, &count, available_extensions.data());
 
-        std::set<std::string> required_extensions(device_extensions.begin(), device_extensions.end());
+        std::set<std::string> unsupported_extensions(required_device_extensions.begin(),
+                                                     required_device_extensions.end());
 
         for (const auto& extension : available_extensions) {
-            required_extensions.erase(extension.extensionName);
+            unsupported_extensions.erase(extension.extensionName);
         }
 
-        return required_extensions.empty();
+        return unsupported_extensions.empty();
     }
 
     static VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info() {
@@ -493,6 +514,19 @@ private:
 
         for (size_t i = 0; i < glfw_extension_count; i++) {
             extensions.emplace_back(glfw_extensions[i]);
+        }
+
+        uint32_t extension_count = 0;
+        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+        std::vector<VkExtensionProperties> available_extensions(extension_count);
+        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, available_extensions.data());
+
+        for (auto available_extension : available_extensions) {
+            for (auto portability_extension : instance_portability_extensions) {
+                if (std::string_view(available_extension.extensionName) == portability_extension) {
+                    extensions.emplace_back(portability_extension.data());
+                }
+            }
         }
 
         return extensions;
