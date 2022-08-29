@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -82,6 +83,7 @@ private:
         create_logical_device();
         create_swap_chain();
         create_image_views();
+        create_graphics_pipeline();
     }
 
     void main_loop() {
@@ -337,6 +339,44 @@ private:
         }
     }
 
+    void create_graphics_pipeline() {
+        auto vert_shader_code = read_file("shaders/vert.spv");
+        auto frag_shader_code = read_file("shaders/frag.spv");
+        VkShaderModule vert_shader_module = create_shader_module(vert_shader_code);
+        VkShaderModule frag_shader_module = create_shader_module(frag_shader_code);
+
+        VkPipelineShaderStageCreateInfo vert_shader_ci{};
+        vert_shader_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vert_shader_ci.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vert_shader_ci.module = vert_shader_module;
+        vert_shader_ci.pName = "main";
+
+        VkPipelineShaderStageCreateInfo frag_shader_ci{};
+        frag_shader_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        frag_shader_ci.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        frag_shader_ci.module = frag_shader_module;
+        frag_shader_ci.pName = "main";
+
+        std::array shader_stages{ vert_shader_ci, frag_shader_ci };
+
+        vkDestroyShaderModule(device, frag_shader_module, nullptr);
+        vkDestroyShaderModule(device, vert_shader_module, nullptr);
+    }
+
+    VkShaderModule create_shader_module(const std::vector<char>& code) {
+        VkShaderModuleCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        ci.codeSize = code.size();
+        ci.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+        VkShaderModule shader_module{};
+        if (vkCreateShaderModule(device, &ci, nullptr, &shader_module) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create shader module!");
+        }
+
+        return shader_module;
+    }
+
     static SwapChainSupportDetails query_swap_chain_support(const VkPhysicalDevice& device,
                                                             const VkSurfaceKHR& surface) {
         SwapChainSupportDetails details;
@@ -560,6 +600,23 @@ private:
                    const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data) {
         std::cerr << "validation layer: " << callback_data->pMessage << std::endl;
         return VK_FALSE;
+    }
+
+    static std::vector<char> read_file(const std::string& filename) {
+        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+        if (!file.is_open()) {
+            throw std::runtime_error("failed to open file!");
+        }
+
+        size_t file_size = file.tellg();
+        std::vector<char> buffer(file_size);
+
+        file.seekg(0);
+        file.read(buffer.data(), file_size);
+        file.close();
+
+        return buffer;
     }
 
     VkInstance instance{};
