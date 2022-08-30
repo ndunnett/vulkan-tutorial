@@ -85,6 +85,7 @@ private:
         create_image_views();
         create_render_pass();
         create_graphics_pipeline();
+        create_framebuffers();
     }
 
     void main_loop() {
@@ -94,6 +95,10 @@ private:
     }
 
     void cleanup() {
+        for (auto* framebuffer : swap_chain_framebuffers) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+
         vkDestroyPipeline(device, graphics_pipeline, nullptr);
         vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
         vkDestroyRenderPass(device, render_pass, nullptr);
@@ -512,6 +517,28 @@ private:
         vkDestroyShaderModule(device, vert_shader_module, nullptr);
     }
 
+    void create_framebuffers() {
+        swap_chain_framebuffers.resize(swap_chain_image_views.size());
+
+        for (size_t i = 0; i < swap_chain_image_views.size(); i++) {
+            const std::array attachments{ swap_chain_image_views[i] };
+
+            VkFramebufferCreateInfo framebuffer_ci{};
+            framebuffer_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebuffer_ci.renderPass = render_pass;
+            framebuffer_ci.attachmentCount = attachments.size();
+            framebuffer_ci.pAttachments = attachments.data();
+            framebuffer_ci.width = swap_chain_extent.width;
+            framebuffer_ci.height = swap_chain_extent.height;
+            framebuffer_ci.layers = 1;
+
+            if (vkCreateFramebuffer(device, &framebuffer_ci, nullptr, &swap_chain_framebuffers[i]) !=
+                VK_SUCCESS) {
+                throw std::runtime_error("failed to create framebuffer!");
+            }
+        }
+    }
+
     VkShaderModule create_shader_module(const std::vector<char>& code) {
         VkShaderModuleCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -784,6 +811,7 @@ private:
     VkRenderPass render_pass{};
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
+    std::vector<VkFramebuffer> swap_chain_framebuffers;
 };
 
 int main() {
