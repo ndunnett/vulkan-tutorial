@@ -1,5 +1,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 #include <algorithm>
 #include <array>
@@ -40,6 +41,32 @@ constexpr bool using_molten_vk = true;
 constexpr bool using_molten_vk = false;
 #endif
 
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static auto get_binding_description() {
+        VkVertexInputBindingDescription binding_description{};
+        binding_description.binding = 0;
+        binding_description.stride = sizeof(Vertex);
+        binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        return binding_description;
+    }
+
+    static auto get_attribute_descriptions() {
+        std::array<VkVertexInputAttributeDescription, 2> attribute_descriptions{};
+        attribute_descriptions.at(0).binding = 0;
+        attribute_descriptions.at(0).location = 0;
+        attribute_descriptions.at(0).format = VK_FORMAT_R32G32_SFLOAT;
+        attribute_descriptions.at(0).offset = offsetof(Vertex, pos);
+        attribute_descriptions.at(1).binding = 0;
+        attribute_descriptions.at(1).location = 1;
+        attribute_descriptions.at(1).format = VK_FORMAT_R32G32B32_SFLOAT;
+        attribute_descriptions.at(1).offset = offsetof(Vertex, color);
+        return attribute_descriptions;
+    }
+};
+
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphics_family;
     std::optional<uint32_t> present_family;
@@ -68,7 +95,6 @@ private:
     void init_window() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebuffer_resize_callback);
@@ -95,6 +121,10 @@ private:
     }
 
     void main_loop() {
+        const std::vector<Vertex> vertices{ { { 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F } },
+                                            { { 0.5F, 0.5F }, { 0.0F, 1.0F, 0.0F } },
+                                            { { -0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F } } };
+
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             draw_frame();
@@ -504,13 +534,15 @@ private:
         frag_shader_ci.pName = "main";
 
         const std::array shader_stages{ vert_shader_ci, frag_shader_ci };
+        auto binding_description = Vertex::get_binding_description();
+        auto attribute_descriptions = Vertex::get_attribute_descriptions();
 
         VkPipelineVertexInputStateCreateInfo vertex_input_ci{};
         vertex_input_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertex_input_ci.vertexBindingDescriptionCount = 0;
-        vertex_input_ci.pVertexBindingDescriptions = nullptr; // Optional
-        vertex_input_ci.vertexAttributeDescriptionCount = 0;
-        vertex_input_ci.pVertexAttributeDescriptions = nullptr; // Optional
+        vertex_input_ci.vertexBindingDescriptionCount = 1;
+        vertex_input_ci.pVertexBindingDescriptions = &binding_description;
+        vertex_input_ci.vertexAttributeDescriptionCount = attribute_descriptions.size();
+        vertex_input_ci.pVertexAttributeDescriptions = attribute_descriptions.data();
 
         VkPipelineInputAssemblyStateCreateInfo input_assembly_ci{};
         input_assembly_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -996,7 +1028,7 @@ private:
     }
 
     static void framebuffer_resize_callback(GLFWwindow* window, int width, int height) {
-        auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        auto* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
         app->framebuffer_resized = true;
     }
 
