@@ -20,6 +20,7 @@ FetchContent_Declare(
 
 # add interface library for dependencies
 add_library(dependencies INTERFACE)
+target_compile_options(dependencies INTERFACE -Wno-deprecated-volatile)
 
 # Add Vulkan to interface library
 find_package(Vulkan REQUIRED)
