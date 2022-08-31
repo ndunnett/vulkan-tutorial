@@ -116,15 +116,12 @@ private:
         create_graphics_pipeline();
         create_framebuffers();
         create_command_pool();
+        create_vertex_buffer();
         create_command_buffers();
         create_sync_objects();
     }
 
     void main_loop() {
-        const std::vector<Vertex> vertices{ { { 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F } },
-                                            { { 0.5F, 0.5F }, { 0.0F, 1.0F, 0.0F } },
-                                            { { -0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F } } };
-
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             draw_frame();
@@ -134,6 +131,8 @@ private:
 
     void cleanup() {
         cleanup_swap_chain();
+        vkDestroyBuffer(device, vertex_buffer, nullptr);
+        vkFreeMemory(device, vertex_buffer_memory, nullptr);
         vkDestroyPipeline(device, graphics_pipeline, nullptr);
         vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
         vkDestroyRenderPass(device, render_pass, nullptr);
@@ -689,6 +688,39 @@ private:
         }
     }
 
+    void create_vertex_buffer() {
+        VkBufferCreateInfo buffer_info{};
+        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buffer_info.size = sizeof(vertices[0]) * vertices.size();
+        buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateBuffer(device, &buffer_info, nullptr, &vertex_buffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create vertex buffer!");
+        }
+
+        VkMemoryRequirements mem_req{};
+        vkGetBufferMemoryRequirements(device, vertex_buffer, &mem_req);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = mem_req.size;
+        allocInfo.memoryTypeIndex =
+            find_memory_type(mem_req.memoryTypeBits,
+                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &vertex_buffer_memory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate vertex buffer memory!");
+        }
+
+        vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+
+        void* data = nullptr;
+        vkMapMemory(device, vertex_buffer_memory, 0, buffer_info.size, 0, &data);
+        memcpy(data, vertices.data(), (size_t)buffer_info.size);
+        vkUnmapMemory(device, vertex_buffer_memory);
+    }
+
     void create_command_buffers() {
         command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -740,7 +772,11 @@ private:
         scissor.extent = swap_chain_extent;
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        const std::array vertex_buffers{ vertex_buffer };
+        const std::array offsets{ VkDeviceSize(0) };
+        vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
+
+        vkCmdDraw(command_buffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
         vkCmdEndRenderPass(command_buffer);
 
         if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
@@ -769,6 +805,19 @@ private:
                 throw std::runtime_error("failed to create semaphores!");
             }
         }
+    }
+
+    uint32_t find_memory_type(uint32_t filter, VkMemoryPropertyFlags flags) {
+        VkPhysicalDeviceMemoryProperties properties{};
+        vkGetPhysicalDeviceMemoryProperties(physical_device, &properties);
+
+        for (uint32_t i = 0; i < properties.memoryTypeCount; i++) {
+            if ((filter & (1 << i)) && (properties.memoryTypes[i].propertyFlags & flags) == flags) {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("failed to find suitable memory type!");
     }
 
     VkShaderModule create_shader_module(const std::vector<char>& code) {
@@ -1049,12 +1098,18 @@ private:
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
     std::vector<VkFramebuffer> swap_chain_framebuffers;
-    VkCommandPool command_pool;
+    VkCommandPool command_pool{};
     std::vector<VkCommandBuffer> command_buffers;
     std::vector<VkSemaphore> image_available_semaphores;
     std::vector<VkSemaphore> render_finished_semaphores;
     std::vector<VkFence> in_flight_fences;
     uint32_t current_frame = 0;
+    VkBuffer vertex_buffer{};
+    VkDeviceMemory vertex_buffer_memory{};
+
+    const std::vector<Vertex> vertices{ { { 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F } },
+                                        { { 0.5F, 0.5F }, { 0.0F, 1.0F, 0.0F } },
+                                        { { -0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F } } };
 
 public:
     bool framebuffer_resized = false;
