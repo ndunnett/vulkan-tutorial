@@ -1,6 +1,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -45,9 +46,9 @@ constexpr bool using_molten_vk = false;
 #endif
 
 struct UniformBufferObject {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
 };
 
 struct Vertex {
@@ -129,6 +130,8 @@ private:
         create_vertex_buffer();
         create_index_buffer();
         create_uniform_buffers();
+        create_descriptor_pool();
+        create_descriptor_sets();
         create_command_buffers();
         create_sync_objects();
     }
@@ -149,6 +152,7 @@ private:
             vkFreeMemory(device, uniform_buffers_memory.at(i), nullptr);
         }
 
+        vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
         vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
         vkDestroyBuffer(device, index_buffer, nullptr);
         vkFreeMemory(device, index_buffer_memory, nullptr);
@@ -555,6 +559,55 @@ private:
         }
     }
 
+    void create_descriptor_pool() {
+        VkDescriptorPoolSize pool_size{};
+        pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        pool_size.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+
+        VkDescriptorPoolCreateInfo pool_ci{};
+        pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_ci.poolSizeCount = 1;
+        pool_ci.pPoolSizes = &pool_size;
+        pool_ci.maxSets = MAX_FRAMES_IN_FLIGHT;
+
+        if (vkCreateDescriptorPool(device, &pool_ci, nullptr, &descriptor_pool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+
+    void create_descriptor_sets() {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptor_set_layout);
+        VkDescriptorSetAllocateInfo alloc_info{};
+        alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        alloc_info.descriptorPool = descriptor_pool;
+        alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+        alloc_info.pSetLayouts = layouts.data();
+
+        descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(device, &alloc_info, descriptor_sets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorBufferInfo buffer_info{};
+            buffer_info.buffer = uniform_buffers.at(i);
+            buffer_info.offset = 0;
+            buffer_info.range = sizeof(UniformBufferObject);
+
+            VkWriteDescriptorSet write_descriptor{};
+            write_descriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write_descriptor.dstSet = descriptor_sets.at(i);
+            write_descriptor.dstBinding = 0;
+            write_descriptor.dstArrayElement = 0;
+            write_descriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            write_descriptor.descriptorCount = 1;
+            write_descriptor.pBufferInfo = &buffer_info;
+            write_descriptor.pImageInfo = nullptr;       // Optional
+            write_descriptor.pTexelBufferView = nullptr; // Optional
+            vkUpdateDescriptorSets(device, 1, &write_descriptor, 0, nullptr);
+        }
+    }
+
     void create_graphics_pipeline() {
         auto vert_shader_code = read_file("shaders/vert.spv");
         VkShaderModule vert_shader_module = create_shader_module(vert_shader_code);
@@ -618,7 +671,7 @@ private:
         rasterizer_ci.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer_ci.lineWidth = 1.0F;
         rasterizer_ci.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer_ci.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer_ci.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer_ci.depthBiasEnable = VK_FALSE;
         rasterizer_ci.depthBiasConstantFactor = 0.0F; // Optional
         rasterizer_ci.depthBiasClamp = 0.0F;          // Optional
@@ -666,25 +719,25 @@ private:
             throw std::runtime_error("failed to create pipeline layout!");
         }
 
-        VkGraphicsPipelineCreateInfo pipelineInfo{};
-        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pipelineInfo.stageCount = shader_stages.size();
-        pipelineInfo.pStages = shader_stages.data();
-        pipelineInfo.pVertexInputState = &vertex_input_ci;
-        pipelineInfo.pInputAssemblyState = &input_assembly_ci;
-        pipelineInfo.pViewportState = &viewport_state_ci;
-        pipelineInfo.pRasterizationState = &rasterizer_ci;
-        pipelineInfo.pMultisampleState = &multisampling_ci;
-        pipelineInfo.pDepthStencilState = nullptr; // Optional
-        pipelineInfo.pColorBlendState = &color_blend_ci;
-        pipelineInfo.pDynamicState = &dynamic_state_ci;
-        pipelineInfo.layout = pipeline_layout;
-        pipelineInfo.renderPass = render_pass;
-        pipelineInfo.subpass = 0;
-        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
-        pipelineInfo.basePipelineIndex = -1;              // Optional
+        VkGraphicsPipelineCreateInfo pipeline_info{};
+        pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipeline_info.stageCount = shader_stages.size();
+        pipeline_info.pStages = shader_stages.data();
+        pipeline_info.pVertexInputState = &vertex_input_ci;
+        pipeline_info.pInputAssemblyState = &input_assembly_ci;
+        pipeline_info.pViewportState = &viewport_state_ci;
+        pipeline_info.pRasterizationState = &rasterizer_ci;
+        pipeline_info.pMultisampleState = &multisampling_ci;
+        pipeline_info.pDepthStencilState = nullptr; // Optional
+        pipeline_info.pColorBlendState = &color_blend_ci;
+        pipeline_info.pDynamicState = &dynamic_state_ci;
+        pipeline_info.layout = pipeline_layout;
+        pipeline_info.renderPass = render_pass;
+        pipeline_info.subpass = 0;
+        pipeline_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
+        pipeline_info.basePipelineIndex = -1;              // Optional
 
-        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr,
                                       &graphics_pipeline) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
@@ -919,7 +972,10 @@ private:
         vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
         vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
 
-        vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1,
+                                &descriptor_sets.at(current_frame), 0, nullptr);
+
+        vkCmdDrawIndexed(command_buffer, indices.size(), 1, 0, 0, 0);
         vkCmdEndRenderPass(command_buffer);
 
         if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
@@ -1240,6 +1296,7 @@ private:
     VkPipelineLayout pipeline_layout{};
     VkPipeline graphics_pipeline{};
     VkCommandPool command_pool{};
+    VkDescriptorPool descriptor_pool{};
     uint32_t current_frame = 0;
 
     VkBuffer vertex_buffer{};
@@ -1256,6 +1313,7 @@ private:
     std::vector<VkSemaphore> image_available_semaphores;
     std::vector<VkSemaphore> render_finished_semaphores;
     std::vector<VkFence> in_flight_fences;
+    std::vector<VkDescriptorSet> descriptor_sets;
 
     const std::vector<Vertex> vertices{ { { -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F } },
                                         { { 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F } },
