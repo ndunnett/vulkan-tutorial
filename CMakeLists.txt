@@ -35,3 +35,10 @@ add_custom_command(TARGET shaders
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/shaders
     COMMAND ./compile.sh
 )
+
+# copy textures
+add_custom_target(textures ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/source/textures
+    ${CMAKE_BINARY_DIR}/textures
+)
