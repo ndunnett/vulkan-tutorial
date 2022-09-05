@@ -339,7 +339,9 @@ private:
     void create_logical_device() {
         QueueFamilyIndices indices = find_queue_families(physical_device, surface);
         float queue_priority = 1.0F;
+
         VkPhysicalDeviceFeatures device_features{};
+        device_features.samplerAnisotropy = VK_TRUE;
 
         std::set<uint32_t> unique_queue_families = { indices.graphics_family.value(),
                                                      indices.present_family.value() };
@@ -883,8 +885,8 @@ private:
     }
 
     void create_texture_sampler() {
-        // VkPhysicalDeviceProperties properties{};
-        // vkGetPhysicalDeviceProperties(physical_device, &properties);
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physical_device, &properties);
 
         VkSamplerCreateInfo sampler_info{};
         sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -893,8 +895,8 @@ private:
         sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_info.anisotropyEnable = VK_FALSE; // VK_TRUE;
-        sampler_info.maxAnisotropy = 1.0F;        // properties.limits.maxSamplerAnisotropy;
+        sampler_info.anisotropyEnable = VK_TRUE;
+        sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
         sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         sampler_info.unnormalizedCoordinates = VK_FALSE;
         sampler_info.compareEnable = VK_FALSE;
