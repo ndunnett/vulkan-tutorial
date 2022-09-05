@@ -5,9 +5,14 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
 
 #include <algorithm>
 #include <array>
@@ -20,12 +25,15 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+constexpr std::string_view MODEL_PATH = "models/viking_room.obj";
+constexpr std::string_view TEXTURE_PATH = "textures/viking_room.png";
 constexpr std::array validation_layers{ "VK_LAYER_KHRONOS_validation" };
 constexpr std::array required_device_extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 constexpr std::string_view create_debug_msg_ext{ "vkCreateDebugUtilsMessengerEXT" };
@@ -60,6 +68,10 @@ struct Vertex {
     glm::vec3 color;
     glm::vec2 tex_coord;
 
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color && tex_coord == other.tex_coord;
+    }
+
     static auto get_binding_description() {
         VkVertexInputBindingDescription binding_description{};
         binding_description.binding = 0;
@@ -90,6 +102,16 @@ struct Vertex {
         return std::array{ pos_description, color_description, tex_coord_description };
     }
 };
+
+namespace std {
+    template<>
+    struct hash<Vertex> {
+        size_t operator()(Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                   (hash<glm::vec2>()(vertex.tex_coord) << 1);
+        }
+    };
+}
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphics_family;
@@ -145,6 +167,7 @@ private:
         create_texture_image();
         create_texture_image_view();
         create_texture_sampler();
+        load_model();
         create_vertex_buffer();
         create_index_buffer();
         create_uniform_buffers();
@@ -916,7 +939,7 @@ private:
         int height = 0;
         int channels = 0;
 
-        stbi_uc* pixels = stbi_load("textures/texture.jpeg", &width, &height, &channels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(TEXTURE_PATH.data(), &width, &height, &channels, STBI_rgb_alpha);
         auto image_size = 4 * static_cast<VkDeviceSize>(width * height);
 
         if (!pixels) {
@@ -1172,6 +1195,41 @@ private:
         end_single_time_commands(command_buffer);
     }
 
+    void load_model() {
+        tinyobj::attrib_t attrib{};
+        std::vector<tinyobj::shape_t> shapes{};
+        std::vector<tinyobj::material_t> materials{};
+        std::string warn{};
+        std::string err{};
+
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.data())) {
+            throw std::runtime_error(warn + err);
+        }
+
+        std::unordered_map<Vertex, uint32_t> unique_vertices{};
+
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex{};
+                vertex.pos = { attrib.vertices[3 * index.vertex_index + 0],
+                               attrib.vertices[3 * index.vertex_index + 1],
+                               attrib.vertices[3 * index.vertex_index + 2] };
+
+                vertex.tex_coord = { attrib.texcoords[2 * index.texcoord_index + 0],
+                                     1.0F - attrib.texcoords[2 * index.texcoord_index + 1] };
+
+                vertex.color = { 1.0F, 1.0F, 1.0F };
+
+                if (!unique_vertices.contains(vertex)) {
+                    unique_vertices[vertex] = static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+
+                indices.push_back(unique_vertices[vertex]);
+            }
+        }
+    }
+
     void create_vertex_buffer() {
         VkDeviceSize buffer_size = sizeof(vertices.at(0)) * vertices.size();
         VkBuffer staging_buffer{};
@@ -1304,7 +1362,7 @@ private:
         const std::array vertex_buffers{ vertex_buffer };
         const std::array offsets{ VkDeviceSize(0) };
         vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.data(), offsets.data());
-        vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1,
                                 &descriptor_sets.at(current_frame), 0, nullptr);
@@ -1668,15 +1726,8 @@ private:
     std::vector<VkFence> in_flight_fences;
     std::vector<VkDescriptorSet> descriptor_sets;
 
-    const std::vector<Vertex> vertices{ { { -0.5F, -0.5F, 0.0F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-                                        { { 0.5F, -0.5F, 0.0F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-                                        { { 0.5F, 0.5F, 0.0F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-                                        { { -0.5F, 0.5F, 0.0F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } },
-                                        { { -0.5F, -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-                                        { { 0.5F, -0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-                                        { { 0.5F, 0.5F, -0.5F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-                                        { { -0.5F, 0.5F, -0.5F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } } };
-    const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4 };
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
 
 public:
     bool framebuffer_resized = false;

@@ -42,3 +42,10 @@ add_custom_target(textures ALL
     ${CMAKE_SOURCE_DIR}/source/textures
     ${CMAKE_BINARY_DIR}/textures
 )
+
+# copy models
+add_custom_target(models ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/source/models
+    ${CMAKE_BINARY_DIR}/models
+)

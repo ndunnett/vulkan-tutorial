@@ -18,6 +18,11 @@ FetchContent_Declare(
     GIT_TAG af1a5bc352164740c1cc1354942b1c6b72eacb8a # main 10/09/2021
 )
 FetchContent_Declare(
+    tinyobjloader_repo
+    GIT_REPOSITORY "https://github.com/tinyobjloader/tinyobjloader"
+    GIT_TAG 2636244e73fa424bb68da6c0ae38f22d15d2f7c6 # main v2.0.0-rc4
+)
+FetchContent_Declare(
     doctest_repo
     GIT_REPOSITORY "https://github.com/doctest/doctest"
     GIT_TAG b7c21ec5ceeadb4951b00396fc1e4642dd347e5f # main v2.4.9
@@ -49,6 +54,11 @@ target_include_directories(dependencies SYSTEM INTERFACE
     ${stb_repo_SOURCE_DIR}
 )
 
+# Add tinyobjloader includes to interface library
+FetchContent_MakeAvailable(tinyobjloader_repo)
+target_include_directories(dependencies SYSTEM INTERFACE
+    ${tinyobjloader_repo_SOURCE_DIR}
+)
 
 # Build GLFW library and link to interface library
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
