@@ -57,6 +57,7 @@ struct UniformBufferObject {
 struct Vertex {
     glm::vec2 pos;
     glm::vec3 color;
+    glm::vec2 tex_coord;
 
     static auto get_binding_description() {
         VkVertexInputBindingDescription binding_description{};
@@ -67,16 +68,25 @@ struct Vertex {
     }
 
     static auto get_attribute_descriptions() {
-        std::array<VkVertexInputAttributeDescription, 2> attribute_descriptions{};
-        attribute_descriptions.at(0).binding = 0;
-        attribute_descriptions.at(0).location = 0;
-        attribute_descriptions.at(0).format = VK_FORMAT_R32G32_SFLOAT;
-        attribute_descriptions.at(0).offset = offsetof(Vertex, pos);
-        attribute_descriptions.at(1).binding = 0;
-        attribute_descriptions.at(1).location = 1;
-        attribute_descriptions.at(1).format = VK_FORMAT_R32G32B32_SFLOAT;
-        attribute_descriptions.at(1).offset = offsetof(Vertex, color);
-        return attribute_descriptions;
+        VkVertexInputAttributeDescription pos_description{};
+        pos_description.binding = 0;
+        pos_description.location = 0;
+        pos_description.format = VK_FORMAT_R32G32_SFLOAT;
+        pos_description.offset = offsetof(Vertex, pos);
+
+        VkVertexInputAttributeDescription color_description{};
+        color_description.binding = 0;
+        color_description.location = 1;
+        color_description.format = VK_FORMAT_R32G32B32_SFLOAT;
+        color_description.offset = offsetof(Vertex, color);
+
+        VkVertexInputAttributeDescription tex_coord_description{};
+        tex_coord_description.binding = 0;
+        tex_coord_description.location = 2;
+        tex_coord_description.format = VK_FORMAT_R32G32_SFLOAT;
+        tex_coord_description.offset = offsetof(Vertex, tex_coord);
+
+        return std::array{ pos_description, color_description, tex_coord_description };
     }
 };
 
@@ -563,10 +573,19 @@ private:
         ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         ubo_layout_binding.pImmutableSamplers = nullptr; // Optional
 
+        VkDescriptorSetLayoutBinding sampler_layout_binding{};
+        sampler_layout_binding.binding = 1;
+        sampler_layout_binding.descriptorCount = 1;
+        sampler_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        sampler_layout_binding.pImmutableSamplers = nullptr;
+        sampler_layout_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        const std::array bindings{ ubo_layout_binding, sampler_layout_binding };
+
         VkDescriptorSetLayoutCreateInfo layout_ci{};
         layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_ci.bindingCount = 1;
-        layout_ci.pBindings = &ubo_layout_binding;
+        layout_ci.bindingCount = bindings.size();
+        layout_ci.pBindings = bindings.data();
 
         if (vkCreateDescriptorSetLayout(device, &layout_ci, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
@@ -574,14 +593,20 @@ private:
     }
 
     void create_descriptor_pool() {
-        VkDescriptorPoolSize pool_size{};
-        pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        pool_size.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+        VkDescriptorPoolSize ubo_pool_size{};
+        ubo_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        ubo_pool_size.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+
+        VkDescriptorPoolSize sampler_pool_size{};
+        sampler_pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        sampler_pool_size.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+
+        const std::array pool_sizes{ ubo_pool_size, sampler_pool_size };
 
         VkDescriptorPoolCreateInfo pool_ci{};
         pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_ci.poolSizeCount = 1;
-        pool_ci.pPoolSizes = &pool_size;
+        pool_ci.poolSizeCount = pool_sizes.size();
+        pool_ci.pPoolSizes = pool_sizes.data();
         pool_ci.maxSets = MAX_FRAMES_IN_FLIGHT;
 
         if (vkCreateDescriptorPool(device, &pool_ci, nullptr, &descriptor_pool) != VK_SUCCESS) {
@@ -608,17 +633,35 @@ private:
             buffer_info.offset = 0;
             buffer_info.range = sizeof(UniformBufferObject);
 
-            VkWriteDescriptorSet write_descriptor{};
-            write_descriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write_descriptor.dstSet = descriptor_sets.at(i);
-            write_descriptor.dstBinding = 0;
-            write_descriptor.dstArrayElement = 0;
-            write_descriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            write_descriptor.descriptorCount = 1;
-            write_descriptor.pBufferInfo = &buffer_info;
-            write_descriptor.pImageInfo = nullptr;       // Optional
-            write_descriptor.pTexelBufferView = nullptr; // Optional
-            vkUpdateDescriptorSets(device, 1, &write_descriptor, 0, nullptr);
+            VkWriteDescriptorSet ubo_descriptor_writes{};
+            ubo_descriptor_writes.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            ubo_descriptor_writes.dstSet = descriptor_sets.at(i);
+            ubo_descriptor_writes.dstBinding = 0;
+            ubo_descriptor_writes.dstArrayElement = 0;
+            ubo_descriptor_writes.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            ubo_descriptor_writes.descriptorCount = 1;
+            ubo_descriptor_writes.pBufferInfo = &buffer_info;
+            ubo_descriptor_writes.pImageInfo = nullptr;       // Optional
+            ubo_descriptor_writes.pTexelBufferView = nullptr; // Optional
+
+            VkDescriptorImageInfo image_info{};
+            image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            image_info.imageView = texture_image_view;
+            image_info.sampler = texture_sampler;
+
+            VkWriteDescriptorSet sampler_descriptor_writes{};
+            sampler_descriptor_writes.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            sampler_descriptor_writes.dstSet = descriptor_sets.at(i);
+            sampler_descriptor_writes.dstBinding = 1;
+            sampler_descriptor_writes.dstArrayElement = 0;
+            sampler_descriptor_writes.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            sampler_descriptor_writes.descriptorCount = 1;
+            sampler_descriptor_writes.pBufferInfo = &buffer_info;
+            sampler_descriptor_writes.pImageInfo = &image_info;
+            sampler_descriptor_writes.pTexelBufferView = nullptr; // Optional
+
+            const std::array descriptor_writes{ ubo_descriptor_writes, sampler_descriptor_writes };
+            vkUpdateDescriptorSets(device, descriptor_writes.size(), descriptor_writes.data(), 0, nullptr);
         }
     }
 
@@ -1522,10 +1565,10 @@ private:
     std::vector<VkFence> in_flight_fences;
     std::vector<VkDescriptorSet> descriptor_sets;
 
-    const std::vector<Vertex> vertices{ { { -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F } },
-                                        { { 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F } },
-                                        { { 0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F } },
-                                        { { -0.5F, 0.5F }, { 1.0F, 1.0F, 1.0F } } };
+    const std::vector<Vertex> vertices{ { { -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
+                                        { { 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
+                                        { { 0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
+                                        { { -0.5F, 0.5F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } } };
     const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
 
 public:
