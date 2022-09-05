@@ -131,6 +131,8 @@ private:
         create_framebuffers();
         create_command_pool();
         create_texture_image();
+        create_texture_image_view();
+        create_texture_sampler();
         create_vertex_buffer();
         create_index_buffer();
         create_uniform_buffers();
@@ -150,6 +152,8 @@ private:
 
     void cleanup() {
         cleanup_swap_chain();
+        vkDestroySampler(device, texture_sampler, nullptr);
+        vkDestroyImageView(device, texture_image_view, nullptr);
         vkDestroyImage(device, texture_image, nullptr);
         vkFreeMemory(device, texture_image_memory, nullptr);
 
@@ -480,28 +484,32 @@ private:
         create_framebuffers();
     }
 
+    VkImageView create_image_view(VkImage image, VkFormat format) {
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = image;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = format;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        view_info.subresourceRange.baseMipLevel = 0;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 1;
+
+        VkImageView image_view{};
+        if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create texture image view!");
+        }
+
+        return image_view;
+    }
+
     void create_image_views() {
         swap_chain_image_views.resize(swap_chain_images.size());
 
         for (size_t i = 0; i < swap_chain_images.size(); i++) {
-            VkImageViewCreateInfo ci{};
-            ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            ci.image = swap_chain_images[i];
-            ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            ci.format = swap_chain_image_format;
-            ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-            ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            ci.subresourceRange.baseMipLevel = 0;
-            ci.subresourceRange.levelCount = 1;
-            ci.subresourceRange.baseArrayLayer = 0;
-            ci.subresourceRange.layerCount = 1;
-
-            if (vkCreateImageView(device, &ci, nullptr, &swap_chain_image_views[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create image views!");
-            }
+            swap_chain_image_views.at(i) =
+                create_image_view(swap_chain_images.at(i), swap_chain_image_format);
         }
     }
 
@@ -825,6 +833,37 @@ private:
 
         vkDestroyBuffer(device, staging_buffer, nullptr);
         vkFreeMemory(device, staging_buffer_memory, nullptr);
+    }
+
+    void create_texture_image_view() {
+        texture_image_view = create_image_view(texture_image, VK_FORMAT_R8G8B8A8_SRGB);
+    }
+
+    void create_texture_sampler() {
+        // VkPhysicalDeviceProperties properties{};
+        // vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+        VkSamplerCreateInfo sampler_info{};
+        sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_info.magFilter = VK_FILTER_LINEAR;
+        sampler_info.minFilter = VK_FILTER_LINEAR;
+        sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_info.anisotropyEnable = VK_FALSE; // VK_TRUE;
+        sampler_info.maxAnisotropy = 1.0F;        // properties.limits.maxSamplerAnisotropy;
+        sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+        sampler_info.unnormalizedCoordinates = VK_FALSE;
+        sampler_info.compareEnable = VK_FALSE;
+        sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+        sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler_info.mipLodBias = 0.0F;
+        sampler_info.minLod = 0.0F;
+        sampler_info.maxLod = 0.0F;
+
+        if (vkCreateSampler(device, &sampler_info, nullptr, &texture_sampler) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create texture sampler!");
+        }
     }
 
     void create_image(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
@@ -1320,6 +1359,12 @@ private:
             return false;
         }
 
+        VkPhysicalDeviceFeatures supported_features{};
+        vkGetPhysicalDeviceFeatures(device, &supported_features);
+        if (!supported_features.samplerAnisotropy) {
+            return false;
+        }
+
         auto swap_chain_support = query_swap_chain_support(device, surface);
         if (swap_chain_support.formats.empty()) {
             return false;
@@ -1458,6 +1503,9 @@ private:
 
     VkImage texture_image{};
     VkDeviceMemory texture_image_memory{};
+    VkImageView texture_image_view{};
+    VkSampler texture_sampler{};
+
     VkBuffer vertex_buffer{};
     VkDeviceMemory vertex_buffer_memory{};
     VkBuffer index_buffer{};
