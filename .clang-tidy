@@ -1,0 +1,14 @@
+Checks: 'bugprone*, -*-easily-swappable-parameters,
+        clang-analyzer*, -*DeadStores,
+        cppcoreguidelines*, -*-reinterpret-cast, -*-special-member-functions,
+        misc*, -*-unused-parameters, -*-non-private-member-variables-in-classes,
+        modernize*, -*-use-trailing-return-type,
+        performance*,
+        portability*,
+        readability*, -*-identifier-length, -*-magic-numbers'
+CheckOptions:
+  - key: readability-implicit-bool-conversion.AllowIntegerConditions
+    value: true
+  - key: readability-implicit-bool-conversion.AllowPointerConditions
+    value: true
+    
