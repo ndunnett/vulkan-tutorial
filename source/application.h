@@ -17,7 +17,7 @@ namespace tutorial {
 
         void run() {
             while (!render->window->should_close()) {
-                render->window->poll_events();
+                render->window->poll();
             }
         }
 

@@ -36,7 +36,7 @@ namespace tutorial {
     static bool glfw_initialised = false;
 
     struct QueueFamilyIndices {
-        QueueFamilyIndices(const vk::PhysicalDevice physical_device, const vk::SurfaceKHR& surface) {
+        QueueFamilyIndices(const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface) {
             auto queue_families = physical_device.getQueueFamilyProperties();
 
             for (int i = 0; i < queue_families.size(); i++) {
@@ -54,8 +54,8 @@ namespace tutorial {
             }
         }
 
-        std::optional<uint32_t> graphics;
-        std::optional<uint32_t> present;
+        std::optional<uint32_t> graphics{};
+        std::optional<uint32_t> present{};
 
         bool is_complete() {
             return graphics.has_value() && present.has_value();
@@ -66,12 +66,35 @@ namespace tutorial {
         };
     };
 
+    struct SwapChainSupportDetails {
+        SwapChainSupportDetails(const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface)
+            : capabilities(physical_device.getSurfaceCapabilitiesKHR(surface)),
+              formats(physical_device.getSurfaceFormatsKHR(surface)),
+              present_modes(physical_device.getSurfacePresentModesKHR(surface)) {}
+
+        vk::SurfaceCapabilitiesKHR capabilities;
+        std::vector<vk::SurfaceFormatKHR> formats;
+        std::vector<vk::PresentModeKHR> present_modes;
+
+        inline bool is_empty() const {
+            return formats.empty() | present_modes.empty();
+        }
+    };
+
     class Renderer {
     public:
         Renderer(std::string_view name = "Vulkan")
             : m_instance(create_instance(name)), m_physical_device(pick_physical_device()) {}
 
         ~Renderer() {}
+
+        const vk::Instance& get_instance() {
+            return *m_instance;
+        }
+
+        const vk::PhysicalDevice& get_physical_device() {
+            return m_physical_device;
+        }
 
         vk::UniqueInstance create_instance(std::string_view name) {
             vk::ApplicationInfo app_info{};
@@ -210,6 +233,18 @@ namespace tutorial {
             return best_device.first;
         }
 
+        uint32_t find_memory_type(uint32_t filter, vk::MemoryPropertyFlags flags) {
+            auto properties = m_physical_device.getMemoryProperties();
+
+            for (uint32_t i = 0; i < properties.memoryTypeCount; i++) {
+                if ((filter & (1 << i)) && (properties.memoryTypes[i].propertyFlags & flags) == flags) {
+                    return i;
+                }
+            }
+
+            throw std::runtime_error("failed to find suitable memory type!");
+        }
+
         vk::Format find_supported_format(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling,
                                          vk::FormatFeatureFlags features) {
             for (auto format : candidates) {
@@ -228,42 +263,26 @@ namespace tutorial {
             throw std::runtime_error("failed to find supported format!");
         }
 
-        vk::Format find_depth_format() {
+        inline vk::Format find_depth_format() {
             return find_supported_format(
                 { vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
                 vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment);
         }
 
-        uint32_t find_memory_type(uint32_t filter, vk::MemoryPropertyFlags flags) {
-            auto properties = m_physical_device.getMemoryProperties();
-
-            for (uint32_t i = 0; i < properties.memoryTypeCount; i++) {
-                if ((filter & (1 << i)) && (properties.memoryTypes[i].propertyFlags & flags) == flags) {
-                    return i;
-                }
-            }
-
-            throw std::runtime_error("failed to find suitable memory type!");
-        }
-
-        auto get_available_extensions() {
+        inline auto get_available_extensions() {
             return m_physical_device.enumerateDeviceExtensionProperties();
         }
 
-        auto create_unique_logical_device(const vk::DeviceCreateInfo& device_ci) {
+        inline auto create_unique_logical_device(const vk::DeviceCreateInfo& device_ci) {
             return m_physical_device.createDeviceUnique(device_ci);
         }
 
-        auto get_queue_family_indices(const vk::SurfaceKHR& surface) {
+        inline auto get_queue_family_indices(const vk::SurfaceKHR& surface) {
             return QueueFamilyIndices(m_physical_device, surface);
         }
 
-        const vk::Instance& get_instance() {
-            return *m_instance;
-        }
-
-        const vk::PhysicalDevice& get_physical_device() {
-            return m_physical_device;
+        inline auto get_swap_chain_support(const vk::SurfaceKHR& surface) {
+            return SwapChainSupportDetails(m_physical_device, surface);
         }
 
     private:
@@ -275,7 +294,7 @@ namespace tutorial {
 
     class Window {
     public:
-        Window(std::string_view title, std::pair<int, int> size, std::vector<std::pair<int, int>> hints) {
+        Window(std::string_view title, std::pair<int, int> size, std::vector<std::pair<int, int>>& hints) {
             if (!glfw_initialised && glfwInit() == GLFW_TRUE) {
                 glfw_initialised = true;
             }
@@ -309,7 +328,7 @@ namespace tutorial {
             return glfwWindowShouldClose(m_window);
         }
 
-        static void poll_events() {
+        static void poll() {
             glfwPollEvents();
         }
 
@@ -328,7 +347,8 @@ namespace tutorial {
             : window(std::make_unique<Window>(title, size, hints)), m_surface(create_surface()),
               m_indices(renderer->get_queue_family_indices(*m_surface)), m_device(create_logical_device()),
               m_graphics_queue(m_device->getQueue(m_indices.graphics.value(), 0)),
-              m_present_queue(m_device->getQueue(m_indices.present.value(), 0)) {}
+              m_present_queue(m_device->getQueue(m_indices.present.value(), 0)),
+              m_swap_chain_support(renderer->get_swap_chain_support(*m_surface)) {}
 
         ~RenderTarget() {}
 
@@ -345,7 +365,7 @@ namespace tutorial {
 
             vk::ObjectDestroy<vk::Instance, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE> deleter(
                 renderer->get_instance());
-            return vk::UniqueSurfaceKHR(vk::SurfaceKHR(raw_surface), deleter);
+            return vk::UniqueSurfaceKHR(raw_surface, deleter);
         }
 
         vk::UniqueDevice create_logical_device() {
@@ -387,5 +407,6 @@ namespace tutorial {
         vk::UniqueDevice m_device;
         vk::Queue m_graphics_queue;
         vk::Queue m_present_queue;
+        SwapChainSupportDetails m_swap_chain_support;
     };
 }
