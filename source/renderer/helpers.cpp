@@ -11,7 +11,7 @@ namespace tutorial {
         glfwTerminate();
     }
 
-    const std::vector<const char*> GlfwInstance::required_extensions() const {
+    std::vector<const char*> GlfwInstance::required_extensions() const {
         uint32_t count = 0;
         const char** extensions = glfwGetRequiredInstanceExtensions(&count);
         return { extensions, extensions + count };

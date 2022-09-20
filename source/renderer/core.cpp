@@ -90,7 +90,7 @@ namespace tutorial {
                 return false;
             }
 
-            if (SwapChainSupportDetails(device, surface).is_empty()) {
+            if (SwapchainSupportDetails(device, surface).is_empty()) {
                 return false;
             }
 
@@ -170,11 +170,17 @@ namespace tutorial {
 
         m_physical_device = pick_physical_device(surface);
         m_queue_family_indices = QueueFamilyIndices(*m_physical_device, surface);
-        m_swap_chain_support = SwapChainSupportDetails(*m_physical_device, surface);
         m_logical_device = create_logical_device();
-        m_graphics_queue = m_logical_device->getQueue(m_queue_family_indices.graphics.value(), 0);
-        m_present_queue = m_logical_device->getQueue(m_queue_family_indices.present.value(), 0);
         devices_initialised = true;
+    }
+
+    std::pair<vk::Queue, vk::Queue> VulkanCore::get_queues() const {
+        if (!devices_initialised) {
+            throw std::runtime_error("trying to get queues without a device initialised!");
+        }
+
+        return { m_logical_device->getQueue(m_queue_family_indices.graphics.value(), 0),
+                 m_logical_device->getQueue(m_queue_family_indices.present.value(), 0) };
     }
 
     auto VulkanCore::get_max_msaa_samples() const {

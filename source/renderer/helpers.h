@@ -10,6 +10,7 @@
 #include <ranges>
 #include <set>
 #include <stdexcept>
+#include <tuple>
 
 namespace tutorial {
 #ifdef NDEBUG
@@ -36,7 +37,7 @@ namespace tutorial {
     struct GlfwInstance {
         GlfwInstance();
         ~GlfwInstance();
-        const std::vector<const char*> required_extensions() const;
+        std::vector<const char*> required_extensions() const;
     };
 
     struct QueueFamilyIndices {
@@ -49,15 +50,19 @@ namespace tutorial {
 
         inline auto set() const {
             return std::set<uint32_t>{ graphics.value(), present.value() };
-        };
+        }
+
+        inline auto values() const {
+            return std::array{ graphics.value(), present.value() };
+        }
 
         std::optional<uint32_t> graphics{};
         std::optional<uint32_t> present{};
     };
 
-    struct SwapChainSupportDetails {
-        SwapChainSupportDetails() = default;
-        SwapChainSupportDetails(const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface)
+    struct SwapchainSupportDetails {
+        SwapchainSupportDetails() = default;
+        SwapchainSupportDetails(const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface)
             : capabilities(physical_device.getSurfaceCapabilitiesKHR(surface)),
               formats(physical_device.getSurfaceFormatsKHR(surface)),
               present_modes(physical_device.getSurfacePresentModesKHR(surface)) {}

@@ -23,7 +23,10 @@ namespace tutorial {
         }
 
         m_vulkan->initialise_devices(raw_surface);
+        std::tie(m_graphics_queue, m_present_queue) = m_vulkan->get_queues();
         m_surface = vk::UniqueSurfaceKHR(raw_surface, m_vulkan->get_deleter());
+        m_swapchain = std::make_unique<Swapchain>(m_vulkan->get_physical_device(),
+                                                  m_vulkan->get_logical_device(), *m_surface, size);
     }
 
     Window::~Window() {
