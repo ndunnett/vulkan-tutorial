@@ -1,25 +1,26 @@
 #pragma once
 
 #include "core.h"
+#include "shaders.h"
 
 namespace tutorial {
     class Swapchain {
     public:
+        Swapchain() = default;
         Swapchain(const vk::PhysicalDevice& physical_device, const vk::Device& logical_device,
                   const vk::SurfaceKHR& surface, std::pair<uint32_t, uint32_t> size) {
             create_object(physical_device, logical_device, surface, size);
-            create_resources();
+            create_image_views(logical_device);
         }
 
-        ~Swapchain() {
-            cleanup_resources();
-        }
+        ~Swapchain() {}
 
         inline void recreate(const vk::PhysicalDevice& physical_device, const vk::Device& logical_device,
                              const vk::SurfaceKHR& surface, std::pair<uint32_t, uint32_t> size) {
-            cleanup_resources();
+            logical_device.waitIdle();
+            m_image_views.clear();
             create_object(physical_device, logical_device, surface, size, m_object.release());
-            create_resources();
+            create_image_views(logical_device);
         }
 
     private:
@@ -27,18 +28,7 @@ namespace tutorial {
         void create_object(const vk::PhysicalDevice& physical_device, const vk::Device& logical_device,
                            const vk::SurfaceKHR& surface, std::pair<uint32_t, uint32_t> size,
                            const vk::SwapchainKHR& old_swapchain = VK_NULL_HANDLE);
-
-        void create_resources() {
-            // m_images
-            // m_image_views
-            // m_framebuffers
-        }
-
-        void cleanup_resources() {
-            // m_images
-            // m_image_views
-            // m_framebuffers
-        }
+        void create_image_views(const vk::Device& logical_device);
 
         SwapchainSupportDetails m_support{};
         vk::UniqueSwapchainKHR m_object{};
@@ -46,8 +36,29 @@ namespace tutorial {
         vk::PresentModeKHR m_present_mode{};
         vk::Extent2D m_extent{};
         std::vector<vk::Image> m_images;
-        std::vector<vk::ImageView> m_image_views;
-        std::vector<vk::Framebuffer> m_framebuffers;
+        std::vector<vk::UniqueImageView> m_image_views;
+    };
+
+    class GraphicsPipeline {
+    public:
+        GraphicsPipeline() = default;
+        GraphicsPipeline(const vk::Device& logical_device) {
+            fragment_shader = create_shader_module(logical_device, fragment_shader_source);
+            vertex_shader = create_shader_module(logical_device, vertex_shader_source);
+        }
+
+        ~GraphicsPipeline() {}
+
+    private:
+        vk::UniqueShaderModule
+        create_shader_module(const vk::Device& logical_device,
+                             std::pair<shaderc_shader_kind, std::string_view> shader_source) {
+            auto compiled_shader = compile_shader(shader_source);
+            return logical_device.createShaderModuleUnique({ {}, compiled_shader });
+        }
+
+        vk::UniqueShaderModule fragment_shader;
+        vk::UniqueShaderModule vertex_shader;
     };
 
     class Window {
@@ -78,5 +89,6 @@ namespace tutorial {
         vk::Queue m_graphics_queue{};
         vk::Queue m_present_queue{};
         std::unique_ptr<Swapchain> m_swapchain{};
+        std::unique_ptr<GraphicsPipeline> m_pipeline{};
     };
 }

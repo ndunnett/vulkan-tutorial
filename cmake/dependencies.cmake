@@ -32,9 +32,10 @@ FetchContent_Declare(
 add_library(dependencies INTERFACE)
 
 # Add Vulkan to interface library
-find_package(Vulkan REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
 target_link_libraries(dependencies INTERFACE
     Vulkan::Vulkan
+    Vulkan::shaderc_combined
 )
 target_include_directories(dependencies SYSTEM INTERFACE
     ${Vulkan_INCLUDE_DIR}

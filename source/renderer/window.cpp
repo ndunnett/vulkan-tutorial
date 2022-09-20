@@ -64,6 +64,19 @@ namespace tutorial {
         m_object = logical_device.createSwapchainKHRUnique(ci);
     }
 
+    void Swapchain::create_image_views(const vk::Device& logical_device) {
+        m_images = logical_device.getSwapchainImagesKHR(*m_object);
+
+        for (auto image : m_images) {
+            vk::ImageViewCreateInfo ci{};
+            ci.setImage(image);
+            ci.setViewType(vk::ImageViewType::e2D);
+            ci.setFormat(m_surface_format.format);
+            ci.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+            m_image_views.emplace_back(logical_device.createImageViewUnique(ci));
+        }
+    }
+
     Window::Window(std::shared_ptr<VulkanCore> vulkan, std::string_view title, std::pair<int, int> size,
                    const std::vector<std::pair<int, int>>& hints)
         : m_vulkan(vulkan) {
@@ -90,6 +103,7 @@ namespace tutorial {
         m_surface = vk::UniqueSurfaceKHR(raw_surface, m_vulkan->get_deleter());
         m_swapchain = std::make_unique<Swapchain>(m_vulkan->get_physical_device(),
                                                   m_vulkan->get_logical_device(), *m_surface, size);
+        m_pipeline = std::make_unique<GraphicsPipeline>();
     }
 
     Window::~Window() {
@@ -99,7 +113,12 @@ namespace tutorial {
     std::pair<uint32_t, uint32_t> Window::get_window_size() const {
         int width = 0;
         int height = 0;
-        glfwGetFramebufferSize(m_window, &width, &height);
+
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(m_window, &width, &height);
+            glfwWaitEvents();
+        }
+
         return { width, height };
     }
 }
