@@ -35,14 +35,36 @@ namespace tutorial {
     };
 
     struct GlfwInstance {
-        GlfwInstance();
-        ~GlfwInstance();
-        std::vector<const char*> required_extensions() const;
+        GlfwInstance() {
+            if (glfwInit() != GLFW_TRUE) {
+                throw std::runtime_error("GLFW failed to initialise!");
+            }
+        }
+
+        ~GlfwInstance() {
+            glfwTerminate();
+        }
     };
 
     struct QueueFamilyIndices {
         QueueFamilyIndices() = default;
-        QueueFamilyIndices(const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface);
+        QueueFamilyIndices(const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface) {
+            auto queue_families = physical_device.getQueueFamilyProperties();
+
+            for (int i = 0; i < queue_families.size(); i++) {
+                if (queue_families.at(i).queueFlags & vk::QueueFlagBits::eGraphics) {
+                    graphics = i;
+                }
+
+                if (physical_device.getSurfaceSupportKHR(i, surface)) {
+                    present = i;
+                }
+
+                if (is_complete()) {
+                    break;
+                }
+            }
+        }
 
         inline bool is_complete() const {
             return graphics.has_value() && present.has_value();

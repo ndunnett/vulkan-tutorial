@@ -1,6 +1,12 @@
 #include "core.h"
 
 namespace tutorial {
+    std::vector<const char*> VulkanCore::required_extensions() const {
+        uint32_t count = 0;
+        const char** extensions = glfwGetRequiredInstanceExtensions(&count);
+        return { extensions, extensions + count };
+    }
+
     vk::UniqueInstance VulkanCore::create_instance(std::string_view name,
                                                    std::vector<const char*> extensions) const {
         vk::ApplicationInfo app_info{};
@@ -183,7 +189,7 @@ namespace tutorial {
                  m_logical_device->getQueue(m_queue_family_indices.present.value(), 0) };
     }
 
-    auto VulkanCore::get_max_msaa_samples() const {
+    vk::SampleCountFlagBits VulkanCore::get_max_msaa_samples() const {
         auto properties = m_physical_device->getProperties();
         auto counts =
             properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;

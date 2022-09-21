@@ -21,7 +21,6 @@ add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
     ${MAIN_DIR}/source/main.cpp
     ${MAIN_DIR}/source/renderer/core.cpp
-    ${MAIN_DIR}/source/renderer/helpers.cpp
     ${MAIN_DIR}/source/renderer/window.cpp
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE dependencies)

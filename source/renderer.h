@@ -6,18 +6,17 @@
 namespace tutorial {
     class Renderer {
     public:
-        Renderer()
-            : m_glfw(std::make_shared<GlfwInstance>()), m_vulkan(std::make_shared<VulkanCore>(m_glfw)) {}
+        Renderer() : glfw(std::make_unique<GlfwInstance>()), vulkan(std::make_unique<VulkanCore>()) {}
 
         ~Renderer() {}
 
         inline auto create_window(std::string_view title, std::pair<int, int> size,
                                   std::vector<std::pair<int, int>> hints) {
-            return std::make_unique<Window>(m_vulkan, title, size, hints);
+            return std::make_unique<Window>(vulkan.get(), title, size, hints);
         }
 
     private:
-        std::shared_ptr<GlfwInstance> m_glfw;
-        std::shared_ptr<VulkanCore> m_vulkan;
+        std::unique_ptr<GlfwInstance> glfw;
+        std::unique_ptr<VulkanCore> vulkan;
     };
 }

@@ -45,13 +45,14 @@ namespace tutorial {
     };
 
     inline const std::vector<uint32_t>
-    compile_shader(std::pair<shaderc_shader_kind, std::string_view> shader_source) {
+    compile_shader(std::pair<shaderc_shader_kind, std::string_view> source) {
         static shaderc::Compiler compiler{};
-        auto module = compiler.CompileGlslToSpv(shader_source.second.data(), shader_source.first, nullptr);
+        std::string name{};
+        auto module = compiler.CompileGlslToSpv(source.second.data(), source.first, name.data());
 
         if (module.GetCompilationStatus() != shaderc_compilation_status_success) {
-            std::cerr << module.GetErrorMessage();
-            throw std::runtime_error("failed to compile shader");
+            std::cerr << "[shaderc] " << module.GetErrorMessage() << std::endl;
+            throw std::runtime_error("failed to compile shader!");
         }
 
         return { module.begin(), module.end() };
