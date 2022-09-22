@@ -3,9 +3,9 @@
 #include <shaderc/shaderc.hpp>
 
 namespace tutorial {
-    constexpr std::pair<shaderc_shader_kind, std::string_view> fragment_shader_source{
-        shaderc_glsl_fragment_shader,
-        R"""(
+    typedef std::pair<shaderc_shader_kind, std::string_view> ShaderSource;
+
+    constexpr ShaderSource fragment_shader_source{ shaderc_glsl_fragment_shader, R"""(
             #version 450
 
             layout(location = 0) in vec3 fragColor;
@@ -15,12 +15,9 @@ namespace tutorial {
             void main() {
                 outColor = vec4(fragColor, 1.0);
             }
-        )"""
-    };
+        )""" };
 
-    constexpr std::pair<shaderc_shader_kind, std::string_view> vertex_shader_source{
-        shaderc_glsl_vertex_shader,
-        R"""(
+    constexpr ShaderSource vertex_shader_source{ shaderc_glsl_vertex_shader, R"""(
             #version 450
 
             layout(location = 0) out vec3 fragColor;
@@ -41,11 +38,9 @@ namespace tutorial {
                 gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
                 fragColor = colors[gl_VertexIndex];
             }
-        )"""
-    };
+        )""" };
 
-    inline const std::vector<uint32_t>
-    compile_shader(std::pair<shaderc_shader_kind, std::string_view> source) {
+    inline const std::vector<uint32_t> compile_shader(const ShaderSource& source) {
         static shaderc::Compiler compiler{};
         std::string name{};
         auto module = compiler.CompileGlslToSpv(source.second.data(), source.first, name.data());

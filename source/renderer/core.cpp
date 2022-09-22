@@ -169,6 +169,13 @@ namespace tutorial {
         return m_physical_device->createDeviceUnique(device_ci);
     }
 
+    vk::UniqueCommandPool VulkanCore::create_command_pool() const {
+        vk::CommandPoolCreateInfo ci{};
+        ci.setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
+        ci.setQueueFamilyIndex(m_queue_family_indices.graphics.value());
+        return m_logical_device->createCommandPoolUnique(ci);
+    }
+
     void VulkanCore::initialise_devices(const vk::SurfaceKHR& surface) {
         if (devices_initialised) {
             return;
@@ -177,6 +184,7 @@ namespace tutorial {
         m_physical_device = pick_physical_device(surface);
         m_queue_family_indices = QueueFamilyIndices(*m_physical_device, surface);
         m_logical_device = create_logical_device();
+        m_command_pool = create_command_pool();
         devices_initialised = true;
     }
 

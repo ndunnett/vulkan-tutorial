@@ -14,6 +14,7 @@ namespace tutorial {
         vk::UniqueInstance create_instance(std::string_view name, std::vector<const char*> extensions) const;
         std::unique_ptr<vk::PhysicalDevice> pick_physical_device(const vk::SurfaceKHR& surface) const;
         vk::UniqueDevice create_logical_device() const;
+        vk::UniqueCommandPool create_command_pool() const;
         void initialise_devices(const vk::SurfaceKHR& surface);
         std::pair<vk::Queue, vk::Queue> get_queues() const;
         vk::SampleCountFlagBits get_max_msaa_samples() const;
@@ -37,6 +38,14 @@ namespace tutorial {
             return *m_logical_device;
         }
 
+        inline const vk::CommandPool& get_command_pool() {
+            return *m_command_pool;
+        }
+
+        inline SingleTimeCommands get_single_time_commands(const vk::Queue& queue) const {
+            return SingleTimeCommands(*m_logical_device, *m_command_pool, queue);
+        }
+
         inline vk::Format find_depth_format() {
             return find_supported_format(
                 { vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
@@ -49,5 +58,6 @@ namespace tutorial {
         std::unique_ptr<vk::PhysicalDevice> m_physical_device = nullptr;
         QueueFamilyIndices m_queue_family_indices{};
         vk::UniqueDevice m_logical_device{};
+        vk::UniqueCommandPool m_command_pool{};
     };
 }

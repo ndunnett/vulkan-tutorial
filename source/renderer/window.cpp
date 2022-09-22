@@ -1,94 +1,170 @@
 #include "window.h"
 
 namespace tutorial {
-    Swapchain::Swapchain(Window* window) : parent(window) {
-        create_object();
-        create_image_views();
+    ImageResource::ImageResource(VulkanCore* vulkan, const ImageProperties& properties)
+        : vulkan(vulkan), properties(properties) {
+        vk::Extent3D extent{ properties.size.first, properties.size.second, 1 };
+
+        vk::ImageCreateInfo image_ci{};
+        image_ci.setImageType(vk::ImageType::e2D);
+        image_ci.setExtent(extent);
+        image_ci.setMipLevels(properties.mip_levels);
+        image_ci.setArrayLayers(1);
+        image_ci.setFormat(properties.format);
+        image_ci.setTiling(properties.tiling);
+        image_ci.setInitialLayout(vk::ImageLayout::eUndefined);
+        image_ci.setUsage(properties.usage);
+        image_ci.setSharingMode(vk::SharingMode::eExclusive);
+        image_ci.setSamples(properties.samples);
+
+        image = vulkan->get_logical_device().createImageUnique(image_ci);
+        auto mem_req = vulkan->get_logical_device().getImageMemoryRequirements(*image);
+
+        vk::MemoryAllocateInfo image_ai{};
+        image_ai.setAllocationSize(mem_req.size);
+        image_ai.setMemoryTypeIndex(vulkan->find_memory_type(mem_req.memoryTypeBits, properties.memory));
+
+        memory = vulkan->get_logical_device().allocateMemoryUnique(image_ai);
+        vulkan->get_logical_device().bindImageMemory(*image, *memory, 0);
+
+        vk::ImageViewCreateInfo view_ci{};
+        view_ci.setImage(*image);
+        view_ci.setViewType(vk::ImageViewType::e2D);
+        view_ci.setFormat(properties.format);
+        view_ci.setSubresourceRange({ properties.aspect_flags, 0, properties.mip_levels, 0, 1 });
+
+        view = vulkan->get_logical_device().createImageViewUnique(view_ci);
     }
 
-    void Swapchain::recreate() {
-        parent->vulkan->get_logical_device().waitIdle();
-        m_image_views.clear();
-        create_object(m_object.release());
-        create_image_views();
-    }
+    void ImageResource::transition_layout(const vk::Queue& queue, vk::ImageLayout old_layout,
+                                          vk::ImageLayout new_layout) {
+        auto commands = vulkan->get_single_time_commands(queue);
 
-    void Swapchain::create_object(const vk::SwapchainKHR& old_swapchain) {
-        parent->m_support = { parent->vulkan->get_physical_device(), *parent->m_surface };
+        vk::ImageMemoryBarrier barrier{};
+        barrier.setOldLayout(old_layout);
+        barrier.setNewLayout(new_layout);
+        barrier.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+        barrier.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+        barrier.setImage(*image);
+        barrier.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, properties.mip_levels, 0, 1 });
 
-        for (auto format : parent->m_support.formats) {
-            if (format.format == vk::Format::eB8G8R8A8Srgb &&
-                format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-                parent->m_surface_format = format;
-            }
-        }
+        vk::PipelineStageFlags source_stage{};
+        vk::PipelineStageFlags destination_stage{};
 
-        for (auto mode : parent->m_support.present_modes) {
-            if (mode == vk::PresentModeKHR::eMailbox) {
-                parent->m_present_mode = mode;
-            }
-        }
-
-        if (parent->m_support.capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-            parent->m_extent = parent->m_support.capabilities.currentExtent;
-        }
-
-        uint32_t image_count = parent->m_support.capabilities.minImageCount + 1;
-        if (parent->m_support.capabilities.maxImageCount > 0 &&
-            image_count > parent->m_support.capabilities.maxImageCount) {
-            image_count = parent->m_support.capabilities.maxImageCount;
-        }
-
-        vk::SwapchainCreateInfoKHR ci{};
-        ci.setSurface(*parent->m_surface);
-        ci.setMinImageCount(image_count);
-        ci.setImageFormat(parent->m_surface_format.format);
-        ci.setImageColorSpace(parent->m_surface_format.colorSpace);
-        ci.setImageExtent(parent->m_extent);
-        ci.setImageArrayLayers(1);
-        ci.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment);
-
-        auto indices = QueueFamilyIndices(parent->vulkan->get_physical_device(), *parent->m_surface);
-        auto index_values = indices.values();
-        if (indices.set().size() > 1) {
-            ci.setImageSharingMode(vk::SharingMode::eConcurrent);
-            ci.setQueueFamilyIndices(index_values);
+        if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eTransferDstOptimal) {
+            barrier.setSrcAccessMask({});
+            barrier.setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
+            source_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+            destination_stage = vk::PipelineStageFlagBits::eTransfer;
+        } else if (old_layout == vk::ImageLayout::eTransferDstOptimal &&
+                   new_layout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+            barrier.setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+            barrier.setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+            source_stage = vk::PipelineStageFlagBits::eTransfer;
+            destination_stage = vk::PipelineStageFlagBits::eFragmentShader;
+        } else if (old_layout == vk::ImageLayout::eUndefined &&
+                   new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+            barrier.setSrcAccessMask({});
+            barrier.setDstAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentRead |
+                                     vk::AccessFlagBits::eDepthStencilAttachmentWrite);
+            source_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+            destination_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
         } else {
-            ci.setImageSharingMode(vk::SharingMode::eExclusive);
+            throw std::invalid_argument("unsupported layout transition!");
         }
 
-        ci.setPreTransform(parent->m_support.capabilities.currentTransform);
-        ci.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque);
-        ci.setPresentMode(parent->m_present_mode);
-        ci.setClipped(VK_TRUE);
-        ci.setOldSwapchain(old_swapchain);
+        if (new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+            barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
 
-        m_object = parent->vulkan->get_logical_device().createSwapchainKHRUnique(ci);
-    }
-
-    void Swapchain::create_image_views() {
-        m_images = parent->vulkan->get_logical_device().getSwapchainImagesKHR(*m_object);
-
-        for (auto image : m_images) {
-            vk::ImageViewCreateInfo ci{};
-            ci.setImage(image);
-            ci.setViewType(vk::ImageViewType::e2D);
-            ci.setFormat(parent->m_surface_format.format);
-            ci.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-            m_image_views.emplace_back(parent->vulkan->get_logical_device().createImageViewUnique(ci));
+            // has stencil component
+            if (properties.format == vk::Format::eD32SfloatS8Uint ||
+                properties.format == vk::Format::eD24UnormS8Uint) {
+                barrier.subresourceRange.aspectMask |= vk::ImageAspectFlagBits::eStencil;
+            }
+        } else {
+            barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
         }
+
+        commands.get_buffer().pipelineBarrier(source_stage, destination_stage, {}, nullptr, nullptr, barrier);
     }
 
-    vk::UniqueShaderModule
-    GraphicsPipeline::create_shader_module(std::pair<shaderc_shader_kind, std::string_view> shader_source) {
+    Window::Window(VulkanCore* vulkan, std::string_view title, std::pair<int, int> size,
+                   const std::vector<std::pair<int, int>>& hints)
+        : vulkan(vulkan) {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+        for (auto hint : hints) {
+            glfwWindowHint(hint.first, hint.second);
+        }
+
+        m_window = glfwCreateWindow(size.first, size.second, title.data(), nullptr, nullptr);
+
+        if (!m_window) {
+            throw std::runtime_error("failed to create GLFW window!");
+        }
+
+        m_surface = create_surface();
+        vulkan->initialise_devices(*m_surface);
+        m_msaa_samples = vulkan->get_max_msaa_samples();
+        std::tie(m_graphics_queue, m_present_queue) = vulkan->get_queues();
+        get_swapchain_details();
+        m_swapchain = create_swapchain();
+        m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
+        m_swapchain_views = create_swapchain_views();
+        m_render_pass = create_render_pass();
+        m_pipeline_layout = create_pipeline_layout();
+        m_graphics_pipeline = create_graphics_pipeline();
+        m_color_image = create_color_image();
+        m_depth_image = create_depth_image();
+        m_framebuffers = create_framebuffers();
+        m_command_buffers = create_command_buffers();
+    }
+
+    Window::~Window() {
+        glfwDestroyWindow(m_window);
+    }
+
+    void Window::set_extent(std::pair<uint32_t, uint32_t> size) {
+        m_extent.width = std::clamp(size.first, m_support.capabilities.minImageExtent.width,
+                                    m_support.capabilities.maxImageExtent.width);
+        m_extent.height = std::clamp(size.second, m_support.capabilities.minImageExtent.height,
+                                     m_support.capabilities.maxImageExtent.height);
+    }
+
+    void Window::rebuild_swapchain() {
+        vulkan->get_logical_device().waitIdle();
+        m_framebuffers.clear();
+        m_swapchain_views.clear();
+        m_swapchain_images.clear();
+        set_extent(get_window_size<uint32_t>());
+        get_swapchain_details();
+        m_swapchain = create_swapchain(*m_swapchain);
+        m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
+        m_swapchain_views = create_swapchain_views();
+        m_color_image = create_color_image();
+        m_depth_image = create_depth_image();
+        m_framebuffers = create_framebuffers();
+    }
+
+    vk::UniqueSurfaceKHR Window::create_surface() const {
+        VkSurfaceKHR raw_surface{};
+
+        if (glfwCreateWindowSurface(vulkan->get_instance(), m_window, nullptr, &raw_surface) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create window surface!");
+        }
+
+        return vk::UniqueSurfaceKHR(raw_surface, vulkan->get_deleter());
+    }
+
+    vk::UniqueShaderModule Window::create_shader_module(const ShaderSource& shader_source) const {
         auto compiled_shader = compile_shader(shader_source);
-        return parent->vulkan->get_logical_device().createShaderModuleUnique({ {}, compiled_shader });
+        return vulkan->get_logical_device().createShaderModuleUnique({ {}, compiled_shader });
     }
 
-    vk::UniqueRenderPass GraphicsPipeline::create_render_pass() {
+    vk::UniqueRenderPass Window::create_render_pass() const {
         vk::AttachmentDescription color_attachment{};
-        color_attachment.setFormat(parent->m_surface_format.format);
-        color_attachment.setSamples(parent->m_msaa_samples);
+        color_attachment.setFormat(m_surface_format.format);
+        color_attachment.setSamples(m_msaa_samples);
         color_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
         color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore);
         color_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
@@ -101,8 +177,8 @@ namespace tutorial {
         color_attachment_ref.setLayout(vk::ImageLayout::eColorAttachmentOptimal);
 
         vk::AttachmentDescription depth_attachment{};
-        depth_attachment.setFormat(parent->vulkan->find_depth_format());
-        depth_attachment.setSamples(parent->m_msaa_samples);
+        depth_attachment.setFormat(vulkan->find_depth_format());
+        depth_attachment.setSamples(m_msaa_samples);
         depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
         depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare);
         depth_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
@@ -115,7 +191,7 @@ namespace tutorial {
         depth_attachment_ref.setLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
         vk::AttachmentDescription color_attachment_resolve{};
-        color_attachment_resolve.setFormat(parent->m_surface_format.format);
+        color_attachment_resolve.setFormat(m_surface_format.format);
         color_attachment_resolve.setSamples(vk::SampleCountFlagBits::e1);
         color_attachment_resolve.setLoadOp(vk::AttachmentLoadOp::eDontCare);
         color_attachment_resolve.setStoreOp(vk::AttachmentStoreOp::eStore);
@@ -152,16 +228,15 @@ namespace tutorial {
         render_pass_ci.setSubpasses(subpass);
         render_pass_ci.setDependencies(dependency);
 
-        return parent->vulkan->get_logical_device().createRenderPassUnique(render_pass_ci);
+        return vulkan->get_logical_device().createRenderPassUnique(render_pass_ci);
     }
 
-    vk::UniquePipelineLayout GraphicsPipeline::create_pipeline_layout() {
+    vk::UniquePipelineLayout Window::create_pipeline_layout() const {
         vk::PipelineLayoutCreateInfo pipeline_layout_ci{};
-
-        return parent->vulkan->get_logical_device().createPipelineLayoutUnique(pipeline_layout_ci);
+        return vulkan->get_logical_device().createPipelineLayoutUnique(pipeline_layout_ci);
     }
 
-    vk::UniquePipeline GraphicsPipeline::create_graphics_pipeline() {
+    vk::UniquePipeline Window::create_graphics_pipeline() const {
         auto fragment_shader = create_shader_module(fragment_shader_source);
         auto vertex_shader = create_shader_module(vertex_shader_source);
 
@@ -177,9 +252,9 @@ namespace tutorial {
         input_assembly_ci.setTopology(vk::PrimitiveTopology::eTriangleList);
         input_assembly_ci.setPrimitiveRestartEnable(VK_FALSE);
 
-        auto size = parent->get_window_size<float>();
+        auto size = get_window_size<float>();
         vk::Viewport viewport{ 0.0F, 0.0F, size.first, size.second, 0.0F, 1.0F };
-        vk::Rect2D scissor{ {}, parent->m_extent };
+        vk::Rect2D scissor{ {}, m_extent };
 
         constexpr std::array dynamic_states{ vk::DynamicState::eViewport, vk::DynamicState::eScissor };
         vk::PipelineDynamicStateCreateInfo dynamic_state_ci({}, dynamic_states);
@@ -199,7 +274,7 @@ namespace tutorial {
 
         vk::PipelineMultisampleStateCreateInfo multisampling_ci{};
         multisampling_ci.setSampleShadingEnable(VK_TRUE);
-        multisampling_ci.setRasterizationSamples(parent->m_msaa_samples);
+        multisampling_ci.setRasterizationSamples(m_msaa_samples);
         multisampling_ci.setMinSampleShading(0.2F);
 
         vk::PipelineColorBlendAttachmentState color_blend_attachment{};
@@ -213,11 +288,10 @@ namespace tutorial {
         color_blend_attachment.setSrcAlphaBlendFactor(vk::BlendFactor::eOne);
         color_blend_attachment.setDstAlphaBlendFactor(vk::BlendFactor::eZero);
         color_blend_attachment.setAlphaBlendOp(vk::BlendOp::eAdd);
-        const std::array color_blend_attachments{ color_blend_attachment };
 
         vk::PipelineColorBlendStateCreateInfo color_blend_ci{};
         color_blend_ci.setLogicOpEnable(VK_FALSE);
-        color_blend_ci.setAttachments(color_blend_attachments);
+        color_blend_ci.setAttachments(color_blend_attachment);
 
         vk::PipelineDepthStencilStateCreateInfo depth_stencil_ci{};
         depth_stencil_ci.setDepthTestEnable(VK_TRUE);
@@ -240,53 +314,141 @@ namespace tutorial {
         graphics_pipeline_ci.setRenderPass(*m_render_pass);
         graphics_pipeline_ci.setSubpass(0);
 
-        auto graphics_pipeline =
-            parent->vulkan->get_logical_device().createGraphicsPipelineUnique({}, graphics_pipeline_ci);
+        auto create = vulkan->get_logical_device().createGraphicsPipelineUnique({}, graphics_pipeline_ci);
 
-        if (graphics_pipeline.result != vk::Result::eSuccess) {
+        if (create.result != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
 
-        return std::move(graphics_pipeline.value);
+        return std::move(create.value);
     }
 
-    Window::Window(VulkanCore* vulkan, std::string_view title, std::pair<int, int> size,
-                   const std::vector<std::pair<int, int>>& hints)
-        : vulkan(vulkan) {
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        for (auto hint : hints) {
-            glfwWindowHint(hint.first, hint.second);
+    vk::UniqueSwapchainKHR Window::create_swapchain(const vk::SwapchainKHR& old_swapchain) const {
+        uint32_t image_count = m_support.capabilities.minImageCount + 1;
+        if (m_support.capabilities.maxImageCount > 0 && image_count > m_support.capabilities.maxImageCount) {
+            image_count = m_support.capabilities.maxImageCount;
         }
 
-        m_window = glfwCreateWindow(size.first, size.second, title.data(), nullptr, nullptr);
-        set_extent(get_window_size<uint32_t>());
+        vk::SwapchainCreateInfoKHR ci{};
+        ci.setSurface(*m_surface);
+        ci.setMinImageCount(image_count);
+        ci.setImageFormat(m_surface_format.format);
+        ci.setImageColorSpace(m_surface_format.colorSpace);
+        ci.setImageExtent(m_extent);
+        ci.setImageArrayLayers(1);
+        ci.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment);
 
-        if (!m_window) {
-            throw std::runtime_error("failed to create GLFW window!");
+        auto indices = QueueFamilyIndices(vulkan->get_physical_device(), *m_surface);
+        auto index_values = indices.values();
+        if (indices.set().size() > 1) {
+            ci.setImageSharingMode(vk::SharingMode::eConcurrent);
+            ci.setQueueFamilyIndices(index_values);
+        } else {
+            ci.setImageSharingMode(vk::SharingMode::eExclusive);
         }
 
-        VkSurfaceKHR raw_surface{};
-        if (glfwCreateWindowSurface(vulkan->get_instance(), m_window, nullptr, &raw_surface) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create window surface!");
-        }
+        ci.setPreTransform(m_support.capabilities.currentTransform);
+        ci.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque);
+        ci.setPresentMode(m_present_mode);
+        ci.setClipped(VK_TRUE);
+        ci.setOldSwapchain(old_swapchain);
 
-        vulkan->initialise_devices(raw_surface);
-        m_msaa_samples = vulkan->get_max_msaa_samples();
-        std::tie(m_graphics_queue, m_present_queue) = vulkan->get_queues();
-        m_surface = vk::UniqueSurfaceKHR(raw_surface, vulkan->get_deleter());
-        m_swapchain = std::make_unique<Swapchain>(this);
-        m_pipeline = std::make_unique<GraphicsPipeline>(this);
+        return vulkan->get_logical_device().createSwapchainKHRUnique(ci);
     }
 
-    Window::~Window() {
-        glfwDestroyWindow(m_window);
+    std::vector<vk::UniqueImageView> Window::create_swapchain_views() const {
+        std::vector<vk::UniqueImageView> views;
+
+        for (auto image : m_swapchain_images) {
+            vk::ImageViewCreateInfo ci{};
+            ci.setImage(image);
+            ci.setViewType(vk::ImageViewType::e2D);
+            ci.setFormat(m_surface_format.format);
+            ci.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+            views.emplace_back(vulkan->get_logical_device().createImageViewUnique(ci));
+        }
+
+        return std::move(views);
     }
 
-    void Window::set_extent(std::pair<uint32_t, uint32_t> size) {
-        m_extent.width = std::clamp(size.first, m_support.capabilities.minImageExtent.width,
-                                    m_support.capabilities.maxImageExtent.width);
-        m_extent.height = std::clamp(size.second, m_support.capabilities.minImageExtent.height,
-                                     m_support.capabilities.maxImageExtent.height);
+    std::unique_ptr<ImageResource> Window::create_color_image() const {
+        ImageProperties properties{ get_window_size<uint32_t>(),
+                                    1,
+                                    m_msaa_samples,
+                                    m_surface_format.format,
+                                    vk::ImageTiling::eOptimal,
+                                    vk::ImageAspectFlagBits::eColor,
+                                    vk::ImageUsageFlagBits::eTransientAttachment |
+                                        vk::ImageUsageFlagBits::eColorAttachment,
+                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
+        return std::make_unique<ImageResource>(vulkan, properties);
+    }
+
+    std::unique_ptr<ImageResource> Window::create_depth_image() const {
+        ImageProperties properties{ get_window_size<uint32_t>(),
+                                    1,
+                                    m_msaa_samples,
+                                    vulkan->find_depth_format(),
+                                    vk::ImageTiling::eOptimal,
+                                    vk::ImageAspectFlagBits::eDepth,
+                                    vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
+        auto image = std::make_unique<ImageResource>(vulkan, properties);
+        image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
+                                 vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        return std::move(image);
+    }
+
+    std::vector<vk::UniqueFramebuffer> Window::create_framebuffers() const {
+        std::vector<vk::UniqueFramebuffer> framebuffers;
+
+        for (const auto& image_view : m_swapchain_views) {
+            const std::array attachments{ *m_color_image->view, *m_depth_image->view, *image_view };
+            vk::FramebufferCreateInfo ci{};
+            ci.setRenderPass(*m_render_pass);
+            ci.setAttachments(attachments);
+            ci.setWidth(m_extent.width);
+            ci.setHeight(m_extent.height);
+            ci.setLayers(1);
+            framebuffers.push_back(vulkan->get_logical_device().createFramebufferUnique(ci));
+        }
+
+        return std::move(framebuffers);
+    }
+
+    std::vector<vk::UniqueCommandBuffer> Window::create_command_buffers() const {
+        vk::CommandBufferAllocateInfo ai{};
+        ai.setCommandPool(vulkan->get_command_pool());
+        ai.setLevel(vk::CommandBufferLevel::ePrimary);
+        ai.setCommandBufferCount(MAX_FRAMES_IN_FLIGHT);
+        return vulkan->get_logical_device().allocateCommandBuffersUnique(ai);
+    }
+
+    void Window::get_swapchain_details() {
+        m_support = { vulkan->get_physical_device(), *m_surface };
+
+        for (auto format : m_support.formats) {
+            if (format.format == vk::Format::eB8G8R8A8Srgb &&
+                format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+                m_surface_format = format;
+            }
+        }
+
+        for (auto mode : m_support.present_modes) {
+            if (mode == vk::PresentModeKHR::eMailbox) {
+                m_present_mode = mode;
+            }
+        }
+
+        if (m_support.capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+            m_extent = m_support.capabilities.currentExtent;
+        }
+    }
+
+    void Window::record_command_buffer(uint32_t index) {
+        vk::CommandBufferBeginInfo bi{};
+        bi.setFlags({});
+        bi.setPInheritanceInfo({});
+        m_command_buffers.at(index)->begin(bi);
     }
 }

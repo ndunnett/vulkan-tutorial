@@ -4,41 +4,37 @@
 #include "shaders.h"
 
 namespace tutorial {
-    class Window;
+    constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 
-    class Swapchain {
-    public:
-        Swapchain(Window* window);
-        void recreate();
+    struct ImageProperties {
+        ImageProperties() = default;
+        ImageProperties(std::pair<uint32_t, uint32_t> size, uint32_t mip_levels,
+                        vk::SampleCountFlagBits samples, vk::Format format, vk::ImageTiling tiling,
+                        vk::ImageAspectFlags aspect_flags, vk::ImageUsageFlags usage,
+                        vk::MemoryPropertyFlags memory)
+            : size(size), mip_levels(mip_levels), samples(samples), format(format), tiling(tiling),
+              aspect_flags(aspect_flags), usage(usage), memory(memory) {}
 
-    private:
-        void create_object(const vk::SwapchainKHR& old_swapchain = VK_NULL_HANDLE);
-        void create_image_views();
-
-        Window* parent = nullptr;
-        vk::UniqueSwapchainKHR m_object{};
-        std::vector<vk::Image> m_images;
-        std::vector<vk::UniqueImageView> m_image_views;
+        std::pair<uint32_t, uint32_t> size;
+        uint32_t mip_levels;
+        vk::SampleCountFlagBits samples;
+        vk::Format format;
+        vk::ImageTiling tiling;
+        vk::ImageAspectFlags aspect_flags;
+        vk::ImageUsageFlags usage;
+        vk::MemoryPropertyFlags memory;
     };
 
-    class GraphicsPipeline {
-    public:
-        GraphicsPipeline(Window* window)
-            : parent(window), m_pipeline_layout(create_pipeline_layout()),
-              m_render_pass(create_render_pass()), m_graphics_pipeline(create_graphics_pipeline()) {}
-        // ~GraphicsPipeline(){}
+    struct ImageResource {
+        ImageResource(VulkanCore* vulkan, const ImageProperties& properties);
+        void transition_layout(const vk::Queue& queue, vk::ImageLayout old_layout,
+                               vk::ImageLayout new_layout);
 
-    private:
-        vk::UniqueShaderModule
-        create_shader_module(std::pair<shaderc_shader_kind, std::string_view> shader_source);
-        vk::UniqueRenderPass create_render_pass();
-        vk::UniquePipelineLayout create_pipeline_layout();
-        vk::UniquePipeline create_graphics_pipeline();
-
-        Window* parent = nullptr;
-        vk::UniqueRenderPass m_render_pass;
-        vk::UniquePipelineLayout m_pipeline_layout;
-        vk::UniquePipeline m_graphics_pipeline;
+        VulkanCore* vulkan = nullptr;
+        ImageProperties properties;
+        vk::UniqueImage image;
+        vk::UniqueDeviceMemory memory;
+        vk::UniqueImageView view;
     };
 
     class Window {
@@ -48,6 +44,7 @@ namespace tutorial {
         ~Window();
 
         void set_extent(std::pair<uint32_t, uint32_t> size);
+        void rebuild_swapchain();
 
         template<class T>
         std::pair<T, T> get_window_size() const {
@@ -70,18 +67,25 @@ namespace tutorial {
             glfwPollEvents();
         }
 
-        inline void recreate_swapchain() {
-            set_extent(get_window_size<uint32_t>());
-            m_swapchain->recreate();
-        }
-
-        friend Swapchain;
-        friend GraphicsPipeline;
-
     private:
-        VulkanCore* vulkan;
+        vk::UniqueSurfaceKHR create_surface() const;
+        vk::UniqueShaderModule create_shader_module(const ShaderSource& shader_source) const;
+        vk::UniqueRenderPass create_render_pass() const;
+        vk::UniquePipelineLayout create_pipeline_layout() const;
+        vk::UniquePipeline create_graphics_pipeline() const;
+        vk::UniqueSwapchainKHR create_swapchain(const vk::SwapchainKHR& old_swapchain = VK_NULL_HANDLE) const;
+        std::vector<vk::UniqueImageView> create_swapchain_views() const;
+        std::unique_ptr<ImageResource> create_color_image() const;
+        std::unique_ptr<ImageResource> create_depth_image() const;
+        std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
+        std::vector<vk::UniqueCommandBuffer> create_command_buffers() const;
+
+        void get_swapchain_details();
+        void record_command_buffer(uint32_t index);
+
+        VulkanCore* vulkan = nullptr;
         GLFWwindow* m_window = nullptr;
-        vk::UniqueSurfaceKHR m_surface;
+        vk::UniqueSurfaceKHR m_surface{};
         SwapchainSupportDetails m_support{};
         vk::SampleCountFlagBits m_msaa_samples = vk::SampleCountFlagBits::e1;
         vk::Queue m_graphics_queue{};
@@ -89,7 +93,15 @@ namespace tutorial {
         vk::SurfaceFormatKHR m_surface_format{};
         vk::PresentModeKHR m_present_mode{};
         vk::Extent2D m_extent{};
-        std::unique_ptr<Swapchain> m_swapchain{};
-        std::unique_ptr<GraphicsPipeline> m_pipeline{};
+        vk::UniqueSwapchainKHR m_swapchain{};
+        std::vector<vk::Image> m_swapchain_images;
+        std::vector<vk::UniqueImageView> m_swapchain_views;
+        vk::UniqueRenderPass m_render_pass{};
+        std::vector<vk::UniqueFramebuffer> m_framebuffers;
+        std::vector<vk::UniqueCommandBuffer> m_command_buffers;
+        vk::UniquePipelineLayout m_pipeline_layout{};
+        vk::UniquePipeline m_graphics_pipeline{};
+        std::unique_ptr<ImageResource> m_color_image;
+        std::unique_ptr<ImageResource> m_depth_image;
     };
 }
