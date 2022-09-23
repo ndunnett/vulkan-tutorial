@@ -19,7 +19,10 @@ namespace tutorial {
         void run() {
             while (!window->should_close()) {
                 window->poll();
+                window->draw_frame();
             }
+
+            renderer->wait_idle();
         }
 
     private:

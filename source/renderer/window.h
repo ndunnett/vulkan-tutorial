@@ -45,6 +45,7 @@ namespace tutorial {
 
         void set_extent(std::pair<uint32_t, uint32_t> size);
         void rebuild_swapchain();
+        void draw_frame();
 
         template<class T>
         std::pair<T, T> get_window_size() const {
@@ -78,7 +79,7 @@ namespace tutorial {
         std::unique_ptr<ImageResource> create_color_image() const;
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
-        std::vector<vk::UniqueCommandBuffer> create_command_buffers() const;
+        vk::UniqueCommandBuffer create_command_buffer() const;
 
         void get_swapchain_details();
         void record_command_buffer(uint32_t index);
@@ -98,10 +99,13 @@ namespace tutorial {
         std::vector<vk::UniqueImageView> m_swapchain_views;
         vk::UniqueRenderPass m_render_pass{};
         std::vector<vk::UniqueFramebuffer> m_framebuffers;
-        std::vector<vk::UniqueCommandBuffer> m_command_buffers;
+        vk::UniqueCommandBuffer m_command_buffer;
         vk::UniquePipelineLayout m_pipeline_layout{};
         vk::UniquePipeline m_graphics_pipeline{};
         std::unique_ptr<ImageResource> m_color_image;
         std::unique_ptr<ImageResource> m_depth_image;
+        vk::UniqueSemaphore m_image_available{};
+        vk::UniqueSemaphore m_render_finished{};
+        vk::UniqueFence m_in_flight{};
     };
 }
