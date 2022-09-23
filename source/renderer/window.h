@@ -6,6 +6,13 @@
 namespace tutorial {
     constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 
+    struct FrameTransient {
+        vk::UniqueCommandBuffer command_buffer{};
+        vk::UniqueSemaphore image_available{};
+        vk::UniqueSemaphore render_finished{};
+        vk::UniqueFence in_flight{};
+    };
+
     struct ImageProperties {
         ImageProperties() = default;
         ImageProperties(std::pair<uint32_t, uint32_t> size, uint32_t mip_levels,
@@ -79,7 +86,7 @@ namespace tutorial {
         std::unique_ptr<ImageResource> create_color_image() const;
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
-        vk::UniqueCommandBuffer create_command_buffer() const;
+        std::vector<FrameTransient> create_frame_transients(int frame_count = 2) const;
 
         void get_swapchain_details();
         void record_command_buffer(uint32_t index);
@@ -99,13 +106,11 @@ namespace tutorial {
         std::vector<vk::UniqueImageView> m_swapchain_views;
         vk::UniqueRenderPass m_render_pass{};
         std::vector<vk::UniqueFramebuffer> m_framebuffers;
-        vk::UniqueCommandBuffer m_command_buffer;
         vk::UniquePipelineLayout m_pipeline_layout{};
         vk::UniquePipeline m_graphics_pipeline{};
         std::unique_ptr<ImageResource> m_color_image;
         std::unique_ptr<ImageResource> m_depth_image;
-        vk::UniqueSemaphore m_image_available{};
-        vk::UniqueSemaphore m_render_finished{};
-        vk::UniqueFence m_in_flight{};
+        std::vector<FrameTransient> m_frames;
+        int m_current_frame = 0;
     };
 }

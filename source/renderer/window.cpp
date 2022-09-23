@@ -118,10 +118,7 @@ namespace tutorial {
         m_color_image = create_color_image();
         m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
-        m_command_buffer = create_command_buffer();
-        m_image_available = vulkan->get_logical_device().createSemaphoreUnique({});
-        m_render_finished = vulkan->get_logical_device().createSemaphoreUnique({});
-        m_in_flight = vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled });
+        m_frames = create_frame_transients(MAX_FRAMES_IN_FLIGHT);
     }
 
     Window::~Window() {
@@ -151,29 +148,32 @@ namespace tutorial {
     }
 
     void Window::draw_frame() {
-        auto wait = vulkan->get_logical_device().waitForFences(*m_in_flight, VK_TRUE, UINT64_MAX);
-        vulkan->get_logical_device().resetFences(*m_in_flight);
+        auto wait = vulkan->get_logical_device().waitForFences(*m_frames.at(m_current_frame).in_flight,
+                                                               VK_TRUE, UINT64_MAX);
+        vulkan->get_logical_device().resetFences(*m_frames.at(m_current_frame).in_flight);
 
-        auto next_image =
-            vulkan->get_logical_device().acquireNextImageKHR(*m_swapchain, UINT64_MAX, *m_image_available);
+        auto next_image = vulkan->get_logical_device().acquireNextImageKHR(
+            *m_swapchain, UINT64_MAX, *m_frames.at(m_current_frame).image_available);
         const uint32_t index = next_image.value;
 
-        m_command_buffer->reset();
+        m_frames.at(m_current_frame).command_buffer->reset();
         record_command_buffer(index);
 
         auto dst_stage = vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput);
         vk::SubmitInfo si{};
-        si.setWaitSemaphores(*m_image_available);
+        si.setWaitSemaphores(*m_frames.at(m_current_frame).image_available);
         si.setWaitDstStageMask(dst_stage);
-        si.setCommandBuffers(*m_command_buffer);
-        si.setSignalSemaphores(*m_render_finished);
-        m_graphics_queue.submit(si, *m_in_flight);
+        si.setCommandBuffers(*m_frames.at(m_current_frame).command_buffer);
+        si.setSignalSemaphores(*m_frames.at(m_current_frame).render_finished);
+        m_graphics_queue.submit(si, *m_frames.at(m_current_frame).in_flight);
 
         vk::PresentInfoKHR pi{};
-        pi.setWaitSemaphores(*m_render_finished);
+        pi.setWaitSemaphores(*m_frames.at(m_current_frame).render_finished);
         pi.setSwapchains(*m_swapchain);
         pi.setImageIndices(index);
         auto present = m_present_queue.presentKHR(pi);
+
+        m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     vk::UniqueSurfaceKHR Window::create_surface() const {
@@ -455,12 +455,24 @@ namespace tutorial {
         return std::move(framebuffers);
     }
 
-    vk::UniqueCommandBuffer Window::create_command_buffer() const {
-        vk::CommandBufferAllocateInfo ai{};
-        ai.setCommandPool(vulkan->get_command_pool());
-        ai.setLevel(vk::CommandBufferLevel::ePrimary);
-        ai.setCommandBufferCount(1);
-        return std::move(vulkan->get_logical_device().allocateCommandBuffersUnique(ai).at(0));
+    std::vector<FrameTransient> Window::create_frame_transients(int frame_count) const {
+        vk::CommandBufferAllocateInfo command_buffers_ai{};
+        command_buffers_ai.setCommandPool(vulkan->get_command_pool());
+        command_buffers_ai.setLevel(vk::CommandBufferLevel::ePrimary);
+        command_buffers_ai.setCommandBufferCount(frame_count);
+        auto command_buffers = vulkan->get_logical_device().allocateCommandBuffersUnique(command_buffers_ai);
+
+        std::vector<FrameTransient> frame_transients(frame_count);
+
+        for (int i = 0; i < frame_count; i++) {
+            frame_transients.at(i).image_available = vulkan->get_logical_device().createSemaphoreUnique({});
+            frame_transients.at(i).render_finished = vulkan->get_logical_device().createSemaphoreUnique({});
+            frame_transients.at(i).in_flight =
+                vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled });
+            frame_transients.at(i).command_buffer = std::move(command_buffers.at(i));
+        }
+
+        return std::move(frame_transients);
     }
 
     void Window::get_swapchain_details() {
@@ -488,7 +500,7 @@ namespace tutorial {
         vk::CommandBufferBeginInfo command_buffer_bi{};
         command_buffer_bi.setFlags({});
         command_buffer_bi.setPInheritanceInfo({});
-        m_command_buffer->begin(command_buffer_bi);
+        m_frames.at(m_current_frame).command_buffer->begin(command_buffer_bi);
 
         constexpr std::array clear_color{ 0.0F, 0.0F, 0.0F, 1.0F };
         const vk::ClearValue clear_value{ clear_color };
@@ -503,12 +515,14 @@ namespace tutorial {
         render_pass_bi.setRenderArea({ { 0, 0 }, m_extent });
         render_pass_bi.setClearValues(clear_values);
 
-        m_command_buffer->beginRenderPass(render_pass_bi, vk::SubpassContents::eInline);
-        m_command_buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphics_pipeline);
-        m_command_buffer->setViewport(0, viewport);
-        m_command_buffer->setScissor(0, scissor);
-        m_command_buffer->draw(3, 1, 0, 0);
-        m_command_buffer->endRenderPass();
-        m_command_buffer->end();
+        m_frames.at(m_current_frame)
+            .command_buffer->beginRenderPass(render_pass_bi, vk::SubpassContents::eInline);
+        m_frames.at(m_current_frame)
+            .command_buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphics_pipeline);
+        m_frames.at(m_current_frame).command_buffer->setViewport(0, viewport);
+        m_frames.at(m_current_frame).command_buffer->setScissor(0, scissor);
+        m_frames.at(m_current_frame).command_buffer->draw(3, 1, 0, 0);
+        m_frames.at(m_current_frame).command_buffer->endRenderPass();
+        m_frames.at(m_current_frame).command_buffer->end();
     }
 }
