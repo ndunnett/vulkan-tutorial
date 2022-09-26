@@ -23,19 +23,21 @@ namespace tutorial {
                                                        UINT64_MAX) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to wait for frame fences!");
         }
+    }
 
+    void FrameTransients::reset_fences() {
         vulkan->get_logical_device().resetFences(*m_frames.at(m_frame_index).in_flight);
     }
 
-    uint32_t FrameTransients::next_image_index(const vk::SwapchainKHR& swapchain) {
+    vk::ResultValue<uint32_t> FrameTransients::next_image_index(const vk::SwapchainKHR& swapchain) {
         auto index = vulkan->get_logical_device().acquireNextImageKHR(
             swapchain, UINT64_MAX, *m_frames.at(m_frame_index).image_available);
 
-        if (index.result != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to wait for frame fences!");
+        if (index.result != vk::Result::eSuccess && index.result != vk::Result::eSuboptimalKHR) {
+            throw std::runtime_error("failed to acquire swapchain image!");
         }
 
-        return index.value;
+        return index;
     }
 
     void FrameTransients::reset_command_buffer() {
@@ -51,17 +53,21 @@ namespace tutorial {
         queue.submit(si, *m_frames.at(m_frame_index).in_flight);
     }
 
-    void FrameTransients::present(const vk::Queue& queue, const vk::SwapchainKHR& swapchain, uint32_t index) {
+    vk::Result FrameTransients::present(const vk::Queue& queue, const vk::SwapchainKHR& swapchain,
+                                        uint32_t index) {
         vk::PresentInfoKHR pi{};
         pi.setWaitSemaphores(*m_frames.at(m_frame_index).render_finished);
         pi.setSwapchains(swapchain);
         pi.setImageIndices(index);
 
-        if (queue.presentKHR(pi) != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to present frame!");
+        auto result = queue.presentKHR(pi);
+
+        if (result != vk::Result::eSuccess && result != vk::Result::eErrorOutOfDateKHR &&
+            result != vk::Result::eSuboptimalKHR) {
+            throw std::runtime_error("failed to present swapchain image!");
         }
 
-        m_frame_index = (m_frame_index + 1) % m_frames.size();
+        return result;
     }
 
     ImageResource::ImageResource(VulkanCore* vulkan, const ImageProperties& properties)
@@ -162,6 +168,8 @@ namespace tutorial {
         }
 
         m_window = glfwCreateWindow(size.first, size.second, title.data(), nullptr, nullptr);
+        glfwSetWindowUserPointer(m_window, this);
+        glfwSetFramebufferSizeCallback(m_window, framebuffer_resize_callback);
 
         if (!m_window) {
             throw std::runtime_error("failed to create GLFW window!");
@@ -196,11 +204,12 @@ namespace tutorial {
     }
 
     void Window::rebuild_swapchain() {
+        auto size = get_window_size<uint32_t>();
         vulkan->get_logical_device().waitIdle();
         m_framebuffers.clear();
         m_swapchain_views.clear();
         m_swapchain_images.clear();
-        set_extent(get_window_size<uint32_t>());
+        set_extent(size);
         get_swapchain_details();
         m_swapchain = create_swapchain(*m_swapchain);
         m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
@@ -212,11 +221,28 @@ namespace tutorial {
 
     void Window::draw_frame() {
         m_frames->wait_for_fences();
+
         auto index = m_frames->next_image_index(*m_swapchain);
+
+        if (index.result == vk::Result::eErrorOutOfDateKHR) {
+            rebuild_swapchain();
+            return;
+        }
+
+        m_frames->reset_fences();
         m_frames->reset_command_buffer();
-        record_command_buffer(index);
+        record_command_buffer(index.value);
         m_frames->submit(m_graphics_queue, vk::PipelineStageFlagBits::eColorAttachmentOutput);
-        m_frames->present(m_present_queue, *m_swapchain, index);
+
+        auto present = m_frames->present(m_present_queue, *m_swapchain, index.value);
+
+        if (present == vk::Result::eErrorOutOfDateKHR || present == vk::Result::eSuboptimalKHR ||
+            m_framebuffer_resized) {
+            m_framebuffer_resized = false;
+            rebuild_swapchain();
+        }
+
+        m_frames->next_frame();
     }
 
     vk::UniqueSurfaceKHR Window::create_surface() const {

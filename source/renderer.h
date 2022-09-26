@@ -15,7 +15,7 @@ namespace tutorial {
         }
 
         inline auto create_window(std::string_view title, std::pair<int, int> size,
-                                  std::vector<std::pair<int, int>> hints) {
+                                  std::vector<std::pair<int, int>> hints = {}) {
             return std::make_unique<Window>(vulkan.get(), title, size, hints);
         }
 

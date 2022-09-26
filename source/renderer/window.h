@@ -17,10 +17,15 @@ namespace tutorial {
         FrameTransients(VulkanCore* vulkan, size_t frames_in_flight);
 
         void wait_for_fences();
-        uint32_t next_image_index(const vk::SwapchainKHR& swapchain);
+        void reset_fences();
+        vk::ResultValue<uint32_t> next_image_index(const vk::SwapchainKHR& swapchain);
         void reset_command_buffer();
         void submit(const vk::Queue& queue, vk::PipelineStageFlags dst_stage_mask);
-        void present(const vk::Queue& queue, const vk::SwapchainKHR& swapchain, uint32_t index);
+        vk::Result present(const vk::Queue& queue, const vk::SwapchainKHR& swapchain, uint32_t index);
+
+        inline void next_frame() {
+            m_frame_index = (m_frame_index + 1) % m_frames.size();
+        }
 
         inline FrameTransient& current() {
             return m_frames.at(m_frame_index);
@@ -94,6 +99,15 @@ namespace tutorial {
             glfwPollEvents();
         }
 
+        inline void set_framebuffer_resized() {
+            m_framebuffer_resized = true;
+        }
+
+        static void framebuffer_resize_callback(GLFWwindow* window, int width, int height) {
+            auto parent = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+            parent->set_framebuffer_resized();
+        }
+
     private:
         vk::UniqueSurfaceKHR create_surface() const;
         vk::UniqueShaderModule create_shader_module(const ShaderSource& shader_source) const;
@@ -129,5 +143,6 @@ namespace tutorial {
         std::unique_ptr<ImageResource> m_color_image;
         std::unique_ptr<ImageResource> m_depth_image;
         std::unique_ptr<FrameTransients> m_frames;
+        bool m_framebuffer_resized = false;
     };
 }

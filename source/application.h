@@ -5,14 +5,14 @@
 namespace tutorial {
     constexpr std::string_view window_title{ "Vulkan" };
     constexpr std::pair<int, int> window_size{ 800, 600 };
-    constexpr std::pair<int, int> window_not_resizable{ GLFW_RESIZABLE, GLFW_FALSE };
-    const std::vector window_flags{ window_not_resizable };
+    // constexpr std::pair<int, int> window_not_resizable{ GLFW_RESIZABLE, GLFW_FALSE };
+    // const std::vector window_flags{ window_not_resizable };
 
     class Application {
     public:
         Application()
             : renderer(std::make_unique<Renderer>()),
-              window(renderer->create_window(window_title, window_size, window_flags)) {}
+              window(renderer->create_window(window_title, window_size)) {}
 
         ~Application() {}
 
