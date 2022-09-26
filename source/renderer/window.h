@@ -4,13 +4,32 @@
 #include "shaders.h"
 
 namespace tutorial {
-    constexpr int MAX_FRAMES_IN_FLIGHT = 3;
+    constexpr size_t MAX_FRAMES_IN_FLIGHT = 3;
 
     struct FrameTransient {
         vk::UniqueCommandBuffer command_buffer{};
         vk::UniqueSemaphore image_available{};
         vk::UniqueSemaphore render_finished{};
         vk::UniqueFence in_flight{};
+    };
+
+    struct FrameTransients {
+        FrameTransients(VulkanCore* vulkan, size_t frames_in_flight);
+
+        void wait_for_fences();
+        uint32_t next_image_index(const vk::SwapchainKHR& swapchain);
+        void reset_command_buffer();
+        void submit(const vk::Queue& queue, vk::PipelineStageFlags dst_stage_mask);
+        void present(const vk::Queue& queue, const vk::SwapchainKHR& swapchain, uint32_t index);
+
+        inline FrameTransient& current() {
+            return m_frames.at(m_frame_index);
+        }
+
+    private:
+        VulkanCore* vulkan = nullptr;
+        std::vector<FrameTransient> m_frames;
+        size_t m_frame_index = 0;
     };
 
     struct ImageProperties {
@@ -86,7 +105,6 @@ namespace tutorial {
         std::unique_ptr<ImageResource> create_color_image() const;
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
-        std::vector<FrameTransient> create_frame_transients(int frame_count = 2) const;
 
         void get_swapchain_details();
         void record_command_buffer(uint32_t index);
@@ -110,7 +128,6 @@ namespace tutorial {
         vk::UniquePipeline m_graphics_pipeline{};
         std::unique_ptr<ImageResource> m_color_image;
         std::unique_ptr<ImageResource> m_depth_image;
-        std::vector<FrameTransient> m_frames;
-        int m_current_frame = 0;
+        std::unique_ptr<FrameTransients> m_frames;
     };
 }
