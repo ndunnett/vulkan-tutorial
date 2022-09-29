@@ -69,14 +69,19 @@ namespace tutorial {
     };
 
     struct Object {
-        Object(VulkanCore* vulkan, const std::vector<Vertex>& vertices)
+        Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices)
             : vulkan(vulkan), vertex_count(vertices.size()) {
             vk::DeviceSize buffer_size = sizeof(Vertex) * vertices.size();
 
-            std::tie(vertex_buffer, vertex_memory) = vulkan->create_buffer(
-                buffer_size, vk::BufferUsageFlagBits::eVertexBuffer,
+            auto [staging_buffer, staging_memory] = vulkan->create_buffer(
+                buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-            vulkan->copy_to_memory(*vertex_memory, vertices.data(), buffer_size);
+            vulkan->copy_to_memory(*staging_memory, vertices.data(), buffer_size);
+
+            std::tie(vertex_buffer, vertex_memory) = vulkan->create_buffer(
+                buffer_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+                vk::MemoryPropertyFlagBits::eDeviceLocal);
+            vulkan->copy_buffer(queue, *vertex_buffer, *staging_buffer, buffer_size);
         }
 
         VulkanCore* vulkan = nullptr;
@@ -109,7 +114,7 @@ namespace tutorial {
         }
 
         inline void add_object(const std::vector<Vertex>& vertices) {
-            m_objects.emplace_back(vulkan, vertices);
+            m_objects.emplace_back(vulkan, m_graphics_queue, vertices);
         }
 
         inline bool should_close() const {

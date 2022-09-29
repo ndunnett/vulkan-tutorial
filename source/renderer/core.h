@@ -25,6 +25,8 @@ namespace tutorial {
         create_buffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
         void copy_to_memory(const vk::DeviceMemory& memory, const void* source, size_t size,
                             size_t offset = 0);
+        void copy_buffer(const vk::Queue& queue, const vk::Buffer& destination, const vk::Buffer& source,
+                         vk::DeviceSize size, vk::DeviceSize dst_offset = 0, vk::DeviceSize src_offset = 0);
 
         inline const vk::Instance& get_instance() {
             return m_instance.get();
