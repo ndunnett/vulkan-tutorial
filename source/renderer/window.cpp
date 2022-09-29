@@ -579,7 +579,9 @@ namespace tutorial {
         for (const auto& object : m_objects) {
             constexpr std::array no_offset{ vk::DeviceSize(0) };
             frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
-            frame.command_buffer->draw(object.vertex_count, 1, 0, 0);
+            frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0,
+                                                  vk::IndexType::eUint16);
+            frame.command_buffer->drawIndexed(object.index_count, 1, 0, 0, 0);
         }
 
         frame.command_buffer->endRenderPass();

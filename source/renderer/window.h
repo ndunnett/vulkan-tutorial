@@ -69,25 +69,42 @@ namespace tutorial {
     };
 
     struct Object {
-        Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices)
-            : vulkan(vulkan), vertex_count(vertices.size()) {
-            vk::DeviceSize buffer_size = sizeof(Vertex) * vertices.size();
+        Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices,
+               const std::vector<uint16_t>& indices)
+            : vulkan(vulkan), index_count(indices.size()) {
+            vk::DeviceSize vertex_buffer_size = sizeof(Vertex) * vertices.size();
 
-            auto [staging_buffer, staging_memory] = vulkan->create_buffer(
-                buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
+            auto [vertex_staging_buffer, vertex_staging_memory] = vulkan->create_buffer(
+                vertex_buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-            vulkan->copy_to_memory(*staging_memory, vertices.data(), buffer_size);
+            vulkan->copy_to_memory(*vertex_staging_memory, vertices.data(), vertex_buffer_size);
 
             std::tie(vertex_buffer, vertex_memory) = vulkan->create_buffer(
-                buffer_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+                vertex_buffer_size,
+                vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
                 vk::MemoryPropertyFlagBits::eDeviceLocal);
-            vulkan->copy_buffer(queue, *vertex_buffer, *staging_buffer, buffer_size);
+            vulkan->copy_buffer(queue, *vertex_buffer, *vertex_staging_buffer, vertex_buffer_size);
+
+            vk::DeviceSize index_buffer_size = sizeof(uint16_t) * indices.size();
+
+            auto [index_staging_buffer, index_staging_memory] = vulkan->create_buffer(
+                index_buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+            vulkan->copy_to_memory(*index_staging_memory, indices.data(), index_buffer_size);
+
+            std::tie(index_buffer, index_memory) = vulkan->create_buffer(
+                index_buffer_size,
+                vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+                vk::MemoryPropertyFlagBits::eDeviceLocal);
+            vulkan->copy_buffer(queue, *index_buffer, *index_staging_buffer, index_buffer_size);
         }
 
         VulkanCore* vulkan = nullptr;
         vk::UniqueBuffer vertex_buffer;
         vk::UniqueDeviceMemory vertex_memory;
-        uint32_t vertex_count = 0;
+        vk::UniqueBuffer index_buffer;
+        vk::UniqueDeviceMemory index_memory;
+        uint32_t index_count = 0;
     };
 
     class Window {
@@ -113,8 +130,8 @@ namespace tutorial {
             return { static_cast<T>(width), static_cast<T>(height) };
         }
 
-        inline void add_object(const std::vector<Vertex>& vertices) {
-            m_objects.emplace_back(vulkan, m_graphics_queue, vertices);
+        inline void add_object(const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices) {
+            m_objects.emplace_back(vulkan, m_graphics_queue, vertices, indices);
         }
 
         inline bool should_close() const {
