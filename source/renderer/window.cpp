@@ -1,20 +1,14 @@
 #include "window.h"
 
 namespace tutorial {
-    FrameTransients::FrameTransients(VulkanCore* vulkan, size_t frames_in_flight)
-        : vulkan(vulkan), m_frames(frames_in_flight) {
+    FrameTransients::FrameTransients(VulkanCore* vulkan, size_t frames_in_flight) : vulkan(vulkan) {
         vk::CommandBufferAllocateInfo ai{};
         ai.setCommandPool(vulkan->get_command_pool());
         ai.setLevel(vk::CommandBufferLevel::ePrimary);
-        ai.setCommandBufferCount(m_frames.size());
-        auto command_buffers = vulkan->get_logical_device().allocateCommandBuffersUnique(ai);
+        ai.setCommandBufferCount(frames_in_flight);
 
-        for (size_t i = 0; i < m_frames.size(); i++) {
-            m_frames.at(i).image_available = vulkan->get_logical_device().createSemaphoreUnique({});
-            m_frames.at(i).render_finished = vulkan->get_logical_device().createSemaphoreUnique({});
-            m_frames.at(i).in_flight =
-                vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled });
-            m_frames.at(i).command_buffer = std::move(command_buffers.at(i));
+        for (auto& command_buffer : vulkan->get_logical_device().allocateCommandBuffersUnique(ai)) {
+            m_frames.emplace_back(vulkan, command_buffer);
         }
     }
 
@@ -579,8 +573,7 @@ namespace tutorial {
         for (const auto& object : m_objects) {
             constexpr std::array no_offset{ vk::DeviceSize(0) };
             frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
-            frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0,
-                                                  vk::IndexType::eUint16);
+            frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0, vk::IndexType::eUint16);
             frame.command_buffer->drawIndexed(object.index_count, 1, 0, 0, 0);
         }
 

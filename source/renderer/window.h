@@ -7,10 +7,17 @@ namespace tutorial {
     constexpr size_t MAX_FRAMES_IN_FLIGHT = 3;
 
     struct FrameTransient {
-        vk::UniqueCommandBuffer command_buffer{};
-        vk::UniqueSemaphore image_available{};
-        vk::UniqueSemaphore render_finished{};
-        vk::UniqueFence in_flight{};
+        FrameTransient(VulkanCore* vulkan, vk::UniqueCommandBuffer& command_buffer)
+            : command_buffer(std::move(command_buffer)),
+              image_available(vulkan->get_logical_device().createSemaphoreUnique({})),
+              render_finished(vulkan->get_logical_device().createSemaphoreUnique({})),
+              in_flight(
+                  vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })) {}
+
+        vk::UniqueCommandBuffer command_buffer;
+        vk::UniqueSemaphore image_available;
+        vk::UniqueSemaphore render_finished;
+        vk::UniqueFence in_flight;
     };
 
     struct FrameTransients {
