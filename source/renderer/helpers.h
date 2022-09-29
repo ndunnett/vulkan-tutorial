@@ -3,6 +3,13 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.hpp>
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -126,5 +133,65 @@ namespace tutorial {
     private:
         const vk::Queue& m_queue;
         vk::UniqueCommandBuffer m_command_buffer;
+    };
+
+    struct UniformBufferObject {
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 proj;
+    };
+
+    struct Vertex {
+        glm::vec2 pos;
+        glm::vec3 color;
+        // glm::vec2 tex_coord;
+
+        bool operator==(const Vertex& other) const {
+            return pos == other.pos && color == other.color; // && tex_coord == other.tex_coord;
+        }
+
+        static auto get_binding_description() {
+            vk::VertexInputBindingDescription binding_description{};
+            binding_description.binding = 0;
+            binding_description.stride = sizeof(Vertex);
+            binding_description.inputRate = vk::VertexInputRate::eVertex;
+            return binding_description;
+        }
+
+        static auto get_attribute_descriptions() {
+            vk::VertexInputAttributeDescription pos_description{};
+            pos_description.binding = 0;
+            pos_description.location = 0;
+            pos_description.format = vk::Format::eR32G32B32Sfloat;
+            pos_description.offset = offsetof(Vertex, pos);
+
+            vk::VertexInputAttributeDescription color_description{};
+            color_description.binding = 0;
+            color_description.location = 1;
+            color_description.format = vk::Format::eR32G32B32Sfloat;
+            color_description.offset = offsetof(Vertex, color);
+
+            // vk::VertexInputAttributeDescription tex_coord_description{};
+            // tex_coord_description.binding = 0;
+            // tex_coord_description.location = 2;
+            // tex_coord_description.format = vk::Format::eR32G32Sfloat;
+            // tex_coord_description.offset = offsetof(Vertex, tex_coord);
+
+            // return std::array{ pos_description, color_description, tex_coord_description };
+            return std::array{ pos_description, color_description };
+        }
+    };
+}
+
+namespace std {
+    template<>
+    struct hash<tutorial::Vertex> {
+        size_t operator()(tutorial::Vertex const& vertex) const {
+            return ((hash<glm::vec2>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1);
+        }
+        // size_t operator()(tutorial::Vertex const& vertex) const {
+        //     return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+        //            (hash<glm::vec2>()(vertex.tex_coord) << 1);
+        // }
     };
 }

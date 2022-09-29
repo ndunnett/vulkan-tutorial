@@ -351,7 +351,12 @@ namespace tutorial {
         shader_stage_cis.emplace_back(
             vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, *vertex_shader, "main"));
 
+        auto binding_description = Vertex::get_binding_description();
+        auto attribute_descriptions = Vertex::get_attribute_descriptions();
+
         vk::PipelineVertexInputStateCreateInfo vertex_input_ci{};
+        vertex_input_ci.setVertexBindingDescriptions(binding_description);
+        vertex_input_ci.setVertexAttributeDescriptions(attribute_descriptions);
 
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_ci{};
         input_assembly_ci.setTopology(vk::PrimitiveTopology::eTriangleList);
@@ -570,7 +575,13 @@ namespace tutorial {
         frame.command_buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphics_pipeline);
         frame.command_buffer->setViewport(0, viewport);
         frame.command_buffer->setScissor(0, scissor);
-        frame.command_buffer->draw(3, 1, 0, 0);
+
+        for (const auto& object : m_objects) {
+            constexpr std::array no_offset{ vk::DeviceSize(0) };
+            frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
+            frame.command_buffer->draw(object.vertex_count, 1, 0, 0);
+        }
+
         frame.command_buffer->endRenderPass();
         frame.command_buffer->end();
     }

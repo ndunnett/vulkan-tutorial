@@ -68,6 +68,35 @@ namespace tutorial {
         vk::UniqueImageView view;
     };
 
+    struct Object {
+        Object(VulkanCore* vulkan, const std::vector<Vertex>& vertices)
+            : vulkan(vulkan), vertex_count(vertices.size()) {
+            vk::BufferCreateInfo ci{};
+            ci.setSize(sizeof(Vertex) * vertices.size());
+            ci.setUsage(vk::BufferUsageFlagBits::eVertexBuffer);
+            ci.setSharingMode(vk::SharingMode::eExclusive);
+            vertex_buffer = vulkan->get_logical_device().createBufferUnique(ci);
+
+            auto mem_req = vulkan->get_logical_device().getBufferMemoryRequirements(*vertex_buffer);
+            vk::MemoryAllocateInfo ai{};
+            ai.setAllocationSize(mem_req.size);
+            ai.setMemoryTypeIndex(vulkan->find_memory_type(mem_req.memoryTypeBits,
+                                                           vk::MemoryPropertyFlagBits::eHostVisible |
+                                                               vk::MemoryPropertyFlagBits::eHostCoherent));
+            vertex_memory = vulkan->get_logical_device().allocateMemoryUnique(ai);
+
+            vulkan->get_logical_device().bindBufferMemory(*vertex_buffer, *vertex_memory, 0);
+            void* data = vulkan->get_logical_device().mapMemory(*vertex_memory, 0, ci.size);
+            memcpy(data, vertices.data(), ci.size);
+            vulkan->get_logical_device().unmapMemory(*vertex_memory);
+        }
+
+        VulkanCore* vulkan = nullptr;
+        vk::UniqueBuffer vertex_buffer;
+        vk::UniqueDeviceMemory vertex_memory;
+        uint32_t vertex_count = 0;
+    };
+
     class Window {
     public:
         Window(VulkanCore* vulkan, std::string_view title, std::pair<int, int> size,
@@ -89,6 +118,10 @@ namespace tutorial {
             }
 
             return { static_cast<T>(width), static_cast<T>(height) };
+        }
+
+        inline void add_object(const std::vector<Vertex>& vertices) {
+            m_objects.emplace_back(vulkan, vertices);
         }
 
         inline bool should_close() const {
@@ -144,5 +177,7 @@ namespace tutorial {
         std::unique_ptr<ImageResource> m_depth_image;
         std::unique_ptr<FrameTransients> m_frames;
         bool m_framebuffer_resized = false;
+
+        std::vector<Object> m_objects;
     };
 }
