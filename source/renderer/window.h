@@ -71,24 +71,12 @@ namespace tutorial {
     struct Object {
         Object(VulkanCore* vulkan, const std::vector<Vertex>& vertices)
             : vulkan(vulkan), vertex_count(vertices.size()) {
-            vk::BufferCreateInfo ci{};
-            ci.setSize(sizeof(Vertex) * vertices.size());
-            ci.setUsage(vk::BufferUsageFlagBits::eVertexBuffer);
-            ci.setSharingMode(vk::SharingMode::eExclusive);
-            vertex_buffer = vulkan->get_logical_device().createBufferUnique(ci);
+            vk::DeviceSize buffer_size = sizeof(Vertex) * vertices.size();
 
-            auto mem_req = vulkan->get_logical_device().getBufferMemoryRequirements(*vertex_buffer);
-            vk::MemoryAllocateInfo ai{};
-            ai.setAllocationSize(mem_req.size);
-            ai.setMemoryTypeIndex(vulkan->find_memory_type(mem_req.memoryTypeBits,
-                                                           vk::MemoryPropertyFlagBits::eHostVisible |
-                                                               vk::MemoryPropertyFlagBits::eHostCoherent));
-            vertex_memory = vulkan->get_logical_device().allocateMemoryUnique(ai);
-
-            vulkan->get_logical_device().bindBufferMemory(*vertex_buffer, *vertex_memory, 0);
-            void* data = vulkan->get_logical_device().mapMemory(*vertex_memory, 0, ci.size);
-            memcpy(data, vertices.data(), ci.size);
-            vulkan->get_logical_device().unmapMemory(*vertex_memory);
+            std::tie(vertex_buffer, vertex_memory) = vulkan->create_buffer(
+                buffer_size, vk::BufferUsageFlagBits::eVertexBuffer,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+            vulkan->copy_to_memory(*vertex_memory, vertices.data(), buffer_size);
         }
 
         VulkanCore* vulkan = nullptr;

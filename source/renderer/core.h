@@ -21,6 +21,10 @@ namespace tutorial {
         uint32_t find_memory_type(uint32_t filter, vk::MemoryPropertyFlags flags);
         vk::Format find_supported_format(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling,
                                          vk::FormatFeatureFlags features);
+        std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory>
+        create_buffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
+        void copy_to_memory(const vk::DeviceMemory& memory, const void* source, size_t size,
+                            size_t offset = 0);
 
         inline const vk::Instance& get_instance() {
             return m_instance.get();

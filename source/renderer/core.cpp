@@ -251,4 +251,32 @@ namespace tutorial {
 
         throw std::runtime_error("failed to find supported format!");
     }
+
+    std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory>
+    VulkanCore::create_buffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                              vk::MemoryPropertyFlags properties) {
+        std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory> buffer_pair;
+
+        vk::BufferCreateInfo ci{};
+        ci.setSize(size);
+        ci.setUsage(usage);
+        ci.setSharingMode(vk::SharingMode::eExclusive);
+        buffer_pair.first = m_logical_device->createBufferUnique(ci);
+
+        auto mem_req = m_logical_device->getBufferMemoryRequirements(*buffer_pair.first);
+        vk::MemoryAllocateInfo ai{};
+        ai.setAllocationSize(mem_req.size);
+        ai.setMemoryTypeIndex(find_memory_type(mem_req.memoryTypeBits, properties));
+        buffer_pair.second = m_logical_device->allocateMemoryUnique(ai);
+
+        m_logical_device->bindBufferMemory(*buffer_pair.first, *buffer_pair.second, 0);
+        return std::move(buffer_pair);
+    }
+
+    void VulkanCore::copy_to_memory(const vk::DeviceMemory& memory, const void* source, size_t size,
+                                    size_t offset) {
+        void* destination = m_logical_device->mapMemory(memory, offset, size);
+        memcpy(destination, source, size);
+        m_logical_device->unmapMemory(memory);
+    }
 }
