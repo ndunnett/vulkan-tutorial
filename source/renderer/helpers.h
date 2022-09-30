@@ -12,6 +12,7 @@
 #include <glm/gtx/hash.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <ranges>

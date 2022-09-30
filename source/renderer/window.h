@@ -6,18 +6,50 @@
 namespace tutorial {
     constexpr size_t MAX_FRAMES_IN_FLIGHT = 3;
 
+    struct UboResource {
+        UboResource(VulkanCore* vulkan) : vulkan(vulkan) {
+            std::tie(buffer, memory) = vulkan->create_buffer(
+                sizeof(UniformBufferObject), vk::BufferUsageFlagBits::eUniformBuffer,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        }
+
+        void update(const vk::Extent2D& extent) {
+            static auto start_time = std::chrono::high_resolution_clock::now();
+            auto current_time = std::chrono::high_resolution_clock::now();
+            float time =
+                std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+            UniformBufferObject ubo{};
+            ubo.model = glm::rotate(glm::mat4(1.0F), time * glm::radians(90.0F), glm::vec3(0.0F, 0.0F, 1.0F));
+            ubo.view = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F),
+                                   glm::vec3(0.0F, 0.0F, 1.0F));
+            ubo.proj = glm::perspective(glm::radians(45.0F),
+                                        static_cast<float>(extent.width) / static_cast<float>(extent.height),
+                                        0.1F, 10.0F);
+            ubo.proj[1][1] *= -1;
+
+            vulkan->copy_to_memory(*memory, &ubo, sizeof(UniformBufferObject));
+        }
+
+        VulkanCore* vulkan = nullptr;
+        vk::UniqueBuffer buffer{};
+        vk::UniqueDeviceMemory memory{};
+    };
+
     struct FrameTransient {
         FrameTransient(VulkanCore* vulkan, vk::UniqueCommandBuffer& command_buffer)
             : command_buffer(std::move(command_buffer)),
               image_available(vulkan->get_logical_device().createSemaphoreUnique({})),
               render_finished(vulkan->get_logical_device().createSemaphoreUnique({})),
               in_flight(
-                  vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })) {}
+                  vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })),
+              ubo(vulkan) {}
 
         vk::UniqueCommandBuffer command_buffer;
         vk::UniqueSemaphore image_available;
         vk::UniqueSemaphore render_finished;
         vk::UniqueFence in_flight;
+        UboResource ubo;
     };
 
     struct FrameTransients {
@@ -36,6 +68,18 @@ namespace tutorial {
 
         inline FrameTransient& current() {
             return m_frames.at(m_frame_index);
+        }
+
+        inline size_t size() const {
+            return m_frames.size();
+        }
+
+        inline const vk::Buffer& get_ubo_buffer(size_t index) {
+            return *m_frames.at(index).ubo.buffer;
+        }
+
+        inline size_t current_index() const {
+            return m_frame_index;
         }
 
     private:
@@ -162,8 +206,11 @@ namespace tutorial {
         vk::UniqueSurfaceKHR create_surface() const;
         vk::UniqueShaderModule create_shader_module(const ShaderSource& shader_source) const;
         vk::UniqueRenderPass create_render_pass() const;
+        vk::UniqueDescriptorSetLayout create_descriptor_set_layout() const;
         vk::UniquePipelineLayout create_pipeline_layout() const;
         vk::UniquePipeline create_graphics_pipeline() const;
+        vk::UniqueDescriptorPool create_descriptor_pool() const;
+        std::vector<vk::UniqueDescriptorSet> create_descriptor_sets() const;
         vk::UniqueSwapchainKHR create_swapchain(const vk::SwapchainKHR& old_swapchain = VK_NULL_HANDLE) const;
         std::vector<vk::UniqueImageView> create_swapchain_views() const;
         std::unique_ptr<ImageResource> create_color_image() const;
@@ -188,11 +235,14 @@ namespace tutorial {
         std::vector<vk::UniqueImageView> m_swapchain_views;
         vk::UniqueRenderPass m_render_pass{};
         std::vector<vk::UniqueFramebuffer> m_framebuffers;
+        vk::UniqueDescriptorSetLayout m_descriptor_set_layout{};
         vk::UniquePipelineLayout m_pipeline_layout{};
         vk::UniquePipeline m_graphics_pipeline{};
         std::unique_ptr<ImageResource> m_color_image;
         std::unique_ptr<ImageResource> m_depth_image;
         std::unique_ptr<FrameTransients> m_frames;
+        vk::UniqueDescriptorPool m_descriptor_pool{};
+        std::vector<vk::UniqueDescriptorSet> m_descriptor_sets;
         bool m_framebuffer_resized = false;
 
         std::vector<Object> m_objects;

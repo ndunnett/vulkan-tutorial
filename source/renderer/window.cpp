@@ -178,12 +178,15 @@ namespace tutorial {
         m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
         m_swapchain_views = create_swapchain_views();
         m_render_pass = create_render_pass();
+        m_descriptor_set_layout = create_descriptor_set_layout();
         m_pipeline_layout = create_pipeline_layout();
         m_graphics_pipeline = create_graphics_pipeline();
         m_color_image = create_color_image();
         m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
         m_frames = std::make_unique<FrameTransients>(vulkan, 2);
+        m_descriptor_pool = create_descriptor_pool();
+        m_descriptor_sets = create_descriptor_sets();
     }
 
     Window::~Window() {
@@ -226,6 +229,7 @@ namespace tutorial {
         m_frames->reset_fences();
         m_frames->reset_command_buffer();
         record_command_buffer(index.value);
+        m_frames->current().ubo.update(m_extent);
         m_frames->submit(m_graphics_queue, vk::PipelineStageFlagBits::eColorAttachmentOutput);
 
         auto present = m_frames->present(m_present_queue, *m_swapchain, index.value);
@@ -330,9 +334,25 @@ namespace tutorial {
         return vulkan->get_logical_device().createRenderPassUnique(render_pass_ci);
     }
 
+    vk::UniqueDescriptorSetLayout Window::create_descriptor_set_layout() const {
+        vk::DescriptorSetLayoutBinding ubo_binding{};
+        ubo_binding.setBinding(0);
+        ubo_binding.setDescriptorType(vk::DescriptorType::eUniformBuffer);
+        ubo_binding.setDescriptorCount(1);
+        ubo_binding.setStageFlags(vk::ShaderStageFlagBits::eVertex);
+
+        const std::array bindings{ ubo_binding };
+
+        vk::DescriptorSetLayoutCreateInfo ci{};
+        ci.setBindings(bindings);
+
+        return vulkan->get_logical_device().createDescriptorSetLayoutUnique(ci);
+    }
+
     vk::UniquePipelineLayout Window::create_pipeline_layout() const {
-        vk::PipelineLayoutCreateInfo pipeline_layout_ci{};
-        return vulkan->get_logical_device().createPipelineLayoutUnique(pipeline_layout_ci);
+        vk::PipelineLayoutCreateInfo ci{};
+        ci.setSetLayouts(*m_descriptor_set_layout);
+        return vulkan->get_logical_device().createPipelineLayoutUnique(ci);
     }
 
     vk::UniquePipeline Window::create_graphics_pipeline() const {
@@ -373,7 +393,7 @@ namespace tutorial {
         rasterizer_ci.setPolygonMode(vk::PolygonMode::eFill);
         rasterizer_ci.setLineWidth(1.0F);
         rasterizer_ci.setCullMode(vk::CullModeFlagBits::eBack);
-        rasterizer_ci.setFrontFace(vk::FrontFace::eClockwise);
+        rasterizer_ci.setFrontFace(vk::FrontFace::eCounterClockwise);
         rasterizer_ci.setDepthBiasEnable(VK_FALSE);
 
         vk::PipelineMultisampleStateCreateInfo multisampling_ci{};
@@ -427,6 +447,52 @@ namespace tutorial {
         }
 
         return std::move(create.value);
+    }
+
+    vk::UniqueDescriptorPool Window::create_descriptor_pool() const {
+        vk::DescriptorPoolSize ubo_pool_size{};
+        ubo_pool_size.setType(vk::DescriptorType::eUniformBuffer);
+        ubo_pool_size.setDescriptorCount(m_frames->size());
+
+        const std::array pool_sizes{ ubo_pool_size };
+
+        vk::DescriptorPoolCreateInfo ci{};
+        ci.setPoolSizes(pool_sizes);
+        ci.setMaxSets(m_frames->size());
+        ci.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
+
+        return vulkan->get_logical_device().createDescriptorPoolUnique(ci);
+    }
+
+    std::vector<vk::UniqueDescriptorSet> Window::create_descriptor_sets() const {
+        std::vector<vk::DescriptorSetLayout> layouts(m_frames->size(), *m_descriptor_set_layout);
+
+        vk::DescriptorSetAllocateInfo ai{};
+        ai.setDescriptorPool(*m_descriptor_pool);
+        ai.setSetLayouts(layouts);
+
+        std::vector<vk::UniqueDescriptorSet> descriptor_sets =
+            vulkan->get_logical_device().allocateDescriptorSetsUnique(ai);
+
+        for (size_t i = 0; i < m_frames->size(); i++) {
+            vk::DescriptorBufferInfo buffer_info{};
+            buffer_info.setBuffer(m_frames->get_ubo_buffer(i));
+            buffer_info.setOffset(0);
+            buffer_info.setRange(sizeof(UniformBufferObject));
+
+            vk::WriteDescriptorSet ubo_write{};
+            ubo_write.setDstSet(*descriptor_sets.at(i));
+            ubo_write.setDstBinding(0);
+            ubo_write.setDstArrayElement(0);
+            ubo_write.setDescriptorType(vk::DescriptorType::eUniformBuffer);
+            ubo_write.setDescriptorCount(1);
+            ubo_write.setBufferInfo(buffer_info);
+
+            const std::array writes{ ubo_write };
+            vulkan->get_logical_device().updateDescriptorSets(writes, nullptr);
+        }
+
+        return std::move(descriptor_sets);
     }
 
     vk::UniqueSwapchainKHR Window::create_swapchain(const vk::SwapchainKHR& old_swapchain) const {
@@ -574,6 +640,9 @@ namespace tutorial {
             constexpr std::array no_offset{ vk::DeviceSize(0) };
             frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
             frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0, vk::IndexType::eUint16);
+            frame.command_buffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_pipeline_layout, 0,
+                                                     *m_descriptor_sets.at(m_frames->current_index()),
+                                                     nullptr);
             frame.command_buffer->drawIndexed(object.index_count, 1, 0, 0, 0);
         }
 
