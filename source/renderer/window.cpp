@@ -193,13 +193,6 @@ namespace tutorial {
         glfwDestroyWindow(m_window);
     }
 
-    void Window::set_extent(std::pair<uint32_t, uint32_t> size) {
-        m_extent.width = std::clamp(size.first, m_support.capabilities.minImageExtent.width,
-                                    m_support.capabilities.maxImageExtent.width);
-        m_extent.height = std::clamp(size.second, m_support.capabilities.minImageExtent.height,
-                                     m_support.capabilities.maxImageExtent.height);
-    }
-
     void Window::rebuild_swapchain() {
         update_size();
         vulkan->get_logical_device().waitIdle();
@@ -586,6 +579,22 @@ namespace tutorial {
         }
 
         return std::move(framebuffers);
+    }
+
+    void Window::update_size() {
+        int width = 0;
+        int height = 0;
+
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(m_window, &width, &height);
+            glfwWaitEvents();
+        }
+
+        m_extent.width = std::clamp(static_cast<uint32_t>(width), m_support.capabilities.minImageExtent.width,
+                                    m_support.capabilities.maxImageExtent.width);
+        m_extent.height =
+            std::clamp(static_cast<uint32_t>(height), m_support.capabilities.minImageExtent.height,
+                       m_support.capabilities.maxImageExtent.height);
     }
 
     void Window::get_swapchain_details() {

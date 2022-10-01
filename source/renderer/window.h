@@ -164,7 +164,6 @@ namespace tutorial {
                const std::vector<std::pair<int, int>>& hints);
         ~Window();
 
-        void set_extent(std::pair<uint32_t, uint32_t> size);
         void rebuild_swapchain();
         void draw_frame();
 
@@ -209,18 +208,7 @@ namespace tutorial {
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
 
-        inline void update_size() {
-            int width = 0;
-            int height = 0;
-
-            while (width == 0 || height == 0) {
-                glfwGetFramebufferSize(m_window, &width, &height);
-                glfwWaitEvents();
-            }
-
-            set_extent({ static_cast<uint32_t>(width), static_cast<uint32_t>(height) });
-        }
-
+        void update_size();
         void get_swapchain_details();
         void record_command_buffer(uint32_t index);
 
