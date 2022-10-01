@@ -169,16 +169,8 @@ namespace tutorial {
         void draw_frame();
 
         template<class T>
-        std::pair<T, T> get_window_size() const {
-            int width = 0;
-            int height = 0;
-
-            while (width == 0 || height == 0) {
-                glfwGetFramebufferSize(m_window, &width, &height);
-                glfwWaitEvents();
-            }
-
-            return { static_cast<T>(width), static_cast<T>(height) };
+        std::pair<T, T> get_size() const {
+            return { static_cast<T>(m_extent.width), static_cast<T>(m_extent.height) };
         }
 
         inline void add_object(const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices) {
@@ -216,6 +208,18 @@ namespace tutorial {
         std::unique_ptr<ImageResource> create_color_image() const;
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
+
+        inline void update_size() {
+            int width = 0;
+            int height = 0;
+
+            while (width == 0 || height == 0) {
+                glfwGetFramebufferSize(m_window, &width, &height);
+                glfwWaitEvents();
+            }
+
+            set_extent({ static_cast<uint32_t>(width), static_cast<uint32_t>(height) });
+        }
 
         void get_swapchain_details();
         void record_command_buffer(uint32_t index);

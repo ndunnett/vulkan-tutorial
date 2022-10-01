@@ -201,12 +201,11 @@ namespace tutorial {
     }
 
     void Window::rebuild_swapchain() {
-        auto size = get_window_size<uint32_t>();
+        update_size();
         vulkan->get_logical_device().waitIdle();
         m_framebuffers.clear();
         m_swapchain_views.clear();
         m_swapchain_images.clear();
-        set_extent(size);
         get_swapchain_details();
         m_swapchain = create_swapchain(*m_swapchain);
         m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
@@ -376,7 +375,7 @@ namespace tutorial {
         input_assembly_ci.setTopology(vk::PrimitiveTopology::eTriangleList);
         input_assembly_ci.setPrimitiveRestartEnable(VK_FALSE);
 
-        auto size = get_window_size<float>();
+        auto size = get_size<float>();
         vk::Viewport viewport{ 0.0F, 0.0F, size.first, size.second, 0.0F, 1.0F };
         vk::Rect2D scissor{ {}, m_extent };
 
@@ -545,7 +544,7 @@ namespace tutorial {
     }
 
     std::unique_ptr<ImageResource> Window::create_color_image() const {
-        ImageProperties properties{ get_window_size<uint32_t>(),
+        ImageProperties properties{ get_size<uint32_t>(),
                                     1,
                                     m_msaa_samples,
                                     m_surface_format.format,
@@ -558,7 +557,7 @@ namespace tutorial {
     }
 
     std::unique_ptr<ImageResource> Window::create_depth_image() const {
-        ImageProperties properties{ get_window_size<uint32_t>(),
+        ImageProperties properties{ get_size<uint32_t>(),
                                     1,
                                     m_msaa_samples,
                                     vulkan->find_depth_format(),
@@ -621,7 +620,8 @@ namespace tutorial {
         constexpr std::array clear_color{ 0.0F, 0.0F, 0.0F, 1.0F };
         const vk::ClearValue clear_value{ clear_color };
         const std::array clear_values{ clear_value, clear_value };
-        auto size = get_window_size<float>();
+
+        auto size = get_size<float>();
         vk::Viewport viewport{ 0.0F, 0.0F, size.first, size.second, 0.0F, 1.0F };
         vk::Rect2D scissor{ { 0, 0 }, m_extent };
 
