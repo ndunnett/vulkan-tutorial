@@ -26,3 +26,10 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE dependencies)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+
+# copy assets
+add_custom_target(assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets
+    ${CMAKE_BINARY_DIR}
+)

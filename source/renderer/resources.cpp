@@ -1,29 +1,18 @@
 #include "resources.h"
 
 namespace tutorial {
-    UboResource::UboResource(VulkanCore* vulkan) : vulkan(vulkan) {
+    UboResource::UboResource(VulkanCore* vulkan) {
         std::tie(buffer, memory) = vulkan->create_buffer(
             sizeof(UniformBufferObject), vk::BufferUsageFlagBits::eUniformBuffer,
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
     }
 
-    void UboResource::update(const vk::Extent2D& extent) {
-        static auto start_time = std::chrono::high_resolution_clock::now();
-        auto current_time = std::chrono::high_resolution_clock::now();
-        float time =
-            std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-
-        UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0F), time * glm::radians(90.0F), glm::vec3(0.0F, 0.0F, 1.0F));
-        ubo.view = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F),
-                               glm::vec3(0.0F, 0.0F, 1.0F));
-        ubo.proj = glm::perspective(glm::radians(45.0F),
-                                    static_cast<float>(extent.width) / static_cast<float>(extent.height),
-                                    0.1F, 10.0F);
-        ubo.proj[1][1] *= -1;
-
-        vulkan->copy_to_memory(*memory, &ubo, sizeof(UniformBufferObject));
-    }
+    FrameTransient::FrameTransient(VulkanCore* vulkan, vk::UniqueCommandBuffer& command_buffer)
+        : command_buffer(std::move(command_buffer)),
+          image_available(vulkan->logical_device->createSemaphoreUnique({})),
+          render_finished(vulkan->logical_device->createSemaphoreUnique({})),
+          in_flight(vulkan->logical_device->createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })),
+          ubo(vulkan) {}
 
     FrameTransients::FrameTransients(VulkanCore* vulkan, size_t frames_in_flight) : vulkan(vulkan) {
         vk::CommandBufferAllocateInfo ai{};
@@ -86,6 +75,10 @@ namespace tutorial {
         }
 
         return result;
+    }
+
+    void FrameTransients::update_ubo(const UniformBufferObject& new_ubo) {
+        vulkan->copy_to_memory(*m_frames.at(m_frame_index).ubo.memory, &new_ubo, sizeof(UniformBufferObject));
     }
 
     ImageResource::ImageResource(VulkanCore* vulkan, const ImageProperties& properties)
@@ -176,9 +169,24 @@ namespace tutorial {
         commands.buffer->pipelineBarrier(source_stage, destination_stage, {}, nullptr, nullptr, barrier);
     }
 
+    void ImageResource::copy_buffer(const vk::Queue& queue, const vk::Buffer& buffer,
+                                    std::pair<uint32_t, uint32_t> image_size) {
+        auto commands = vulkan->get_single_time_commands(queue);
+
+        vk::BufferImageCopy copy_region{};
+        copy_region.setBufferOffset(0);
+        copy_region.setBufferRowLength(0);
+        copy_region.setBufferImageHeight(0);
+        copy_region.setImageSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 });
+        copy_region.setImageOffset({ 0, 0, 0 });
+        copy_region.setImageExtent({ image_size.first, image_size.second, 1 });
+
+        commands.buffer->copyBufferToImage(buffer, *image, vk::ImageLayout::eTransferDstOptimal, copy_region);
+    }
+
     Object::Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices,
                    const std::vector<uint16_t>& indices)
-        : vulkan(vulkan), index_count(indices.size()) {
+        : index_count(indices.size()) {
         size_t vertex_buffer_size = sizeof(Vertex) * vertices.size();
 
         auto [vertex_staging_buffer, vertex_staging_memory] = vulkan->create_buffer(

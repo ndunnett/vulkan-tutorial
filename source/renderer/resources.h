@@ -6,20 +6,13 @@
 namespace tutorial {
     struct UboResource {
         UboResource(VulkanCore* vulkan);
-        void update(const vk::Extent2D& extent);
 
-        VulkanCore* vulkan = nullptr;
         vk::UniqueBuffer buffer{};
         vk::UniqueDeviceMemory memory{};
     };
 
     struct FrameTransient {
-        FrameTransient(VulkanCore* vulkan, vk::UniqueCommandBuffer& command_buffer)
-            : command_buffer(std::move(command_buffer)),
-              image_available(vulkan->logical_device->createSemaphoreUnique({})),
-              render_finished(vulkan->logical_device->createSemaphoreUnique({})),
-              in_flight(vulkan->logical_device->createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })),
-              ubo(vulkan) {}
+        FrameTransient(VulkanCore* vulkan, vk::UniqueCommandBuffer& command_buffer);
 
         vk::UniqueCommandBuffer command_buffer;
         vk::UniqueSemaphore image_available;
@@ -28,7 +21,8 @@ namespace tutorial {
         UboResource ubo;
     };
 
-    struct FrameTransients {
+    class FrameTransients {
+    public:
         FrameTransients(VulkanCore* vulkan, size_t frames_in_flight = 3);
 
         void wait_for_fences();
@@ -37,6 +31,7 @@ namespace tutorial {
         void reset_command_buffer();
         void submit(const vk::Queue& queue, vk::PipelineStageFlags dst_stage_mask);
         vk::Result present(const vk::Queue& queue, const vk::SwapchainKHR& swapchain, uint32_t index);
+        void update_ubo(const UniformBufferObject& new_ubo);
 
         inline void next_frame() {
             m_frame_index = (m_frame_index + 1) % m_frames.size();
@@ -64,23 +59,27 @@ namespace tutorial {
         size_t m_frame_index = 0;
     };
 
-    struct ImageResource {
+    class ImageResource {
+    public:
         ImageResource(VulkanCore* vulkan, const ImageProperties& properties);
         void transition_layout(const vk::Queue& queue, vk::ImageLayout old_layout,
                                vk::ImageLayout new_layout);
+        void copy_buffer(const vk::Queue& queue, const vk::Buffer& buffer,
+                         std::pair<uint32_t, uint32_t> image_size);
 
-        VulkanCore* vulkan = nullptr;
         ImageProperties properties;
         vk::UniqueImage image;
         vk::UniqueDeviceMemory memory;
         vk::UniqueImageView view;
+
+    private:
+        VulkanCore* vulkan = nullptr;
     };
 
     struct Object {
         Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices,
                const std::vector<uint16_t>& indices);
 
-        VulkanCore* vulkan = nullptr;
         vk::UniqueBuffer vertex_buffer;
         vk::UniqueDeviceMemory vertex_memory;
         vk::UniqueBuffer index_buffer;

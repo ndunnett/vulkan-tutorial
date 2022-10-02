@@ -1,5 +1,8 @@
 #include "window.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 namespace tutorial {
     Window::Window(VulkanCore* vulkan, std::string_view title, std::pair<int, int> size,
                    const std::vector<std::pair<int, int>>& hints)
@@ -18,6 +21,13 @@ namespace tutorial {
             throw std::runtime_error("failed to create GLFW window!");
         }
 
+        const std::vector<Vertex> vertices{ { { -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
+                                            { { 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
+                                            { { 0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
+                                            { { -0.5F, 0.5F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } } };
+
+        const std::vector<uint16_t> indices{ 0, 1, 2, 2, 3, 0 };
+
         m_surface = create_surface();
         vulkan->initialise_devices(*m_surface);
         // m_msaa_samples = vulkan->get_max_msaa_samples();
@@ -31,10 +41,15 @@ namespace tutorial {
         m_descriptor_set_layout = create_descriptor_set_layout();
         m_pipeline_layout = create_pipeline_layout();
         m_graphics_pipeline = create_graphics_pipeline();
-        m_color_image = create_color_image();
-        m_depth_image = create_depth_image();
+        // m_color_image = create_color_image();
+        // m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
+        m_sampler = create_sampler();
         m_frames = std::make_unique<FrameTransients>(vulkan);
+
+        m_texture = create_texture("textures/texture.jpg");
+        m_object = std::make_unique<Object>(vulkan, m_graphics_queue, vertices, indices);
+
         m_descriptor_pool = create_descriptor_pool();
         m_descriptor_sets = create_descriptor_sets();
     }
@@ -53,8 +68,8 @@ namespace tutorial {
         m_swapchain = create_swapchain(*m_swapchain);
         m_swapchain_images = vulkan->logical_device->getSwapchainImagesKHR(*m_swapchain);
         m_swapchain_views = create_swapchain_views();
-        m_color_image = create_color_image();
-        m_depth_image = create_depth_image();
+        // m_color_image = create_color_image();
+        // m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
     }
 
@@ -71,7 +86,20 @@ namespace tutorial {
         m_frames->reset_fences();
         m_frames->reset_command_buffer();
         record_command_buffer(index.value);
-        m_frames->current().ubo.update(m_extent);
+
+        static auto start_time = std::chrono::high_resolution_clock::now();
+        auto current_time = std::chrono::high_resolution_clock::now();
+        float time =
+            std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+        auto size = get_size<float>();
+
+        UniformBufferObject new_ubo{};
+        new_ubo.model = glm::rotate(glm::mat4(1.0F), time * glm::radians(90.0F), glm::vec3(0.0F, 0.0F, 1.0F));
+        new_ubo.view = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F),
+                                   glm::vec3(0.0F, 0.0F, 1.0F));
+        new_ubo.proj = glm::perspective(glm::radians(45.0F), size.first / size.second, 0.1F, 10.0F);
+        new_ubo.proj[1][1] *= -1;
+        m_frames->update_ubo(new_ubo);
         m_frames->submit(m_graphics_queue, vk::PipelineStageFlagBits::eColorAttachmentOutput);
 
         auto present = m_frames->present(m_present_queue, *m_swapchain, index.value);
@@ -83,6 +111,43 @@ namespace tutorial {
         }
 
         m_frames->next_frame();
+    }
+
+    std::unique_ptr<ImageResource> Window::create_texture(std::string_view path) {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        stbi_uc* pixels = stbi_load(path.data(), &width, &height, &channels, STBI_rgb_alpha);
+
+        if (!pixels) {
+            throw std::runtime_error("failed to load texture image!");
+        }
+
+        size_t memory_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+        auto [staging_buffer, staging_memory] = vulkan->create_buffer(
+            memory_size, vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        vulkan->copy_to_memory(*staging_memory, pixels, memory_size);
+        stbi_image_free(pixels);
+
+        std::pair<uint32_t, uint32_t> image_size{ width, height };
+        ImageProperties properties{ image_size,
+                                    1,
+                                    vk::SampleCountFlagBits::e1,
+                                    vk::Format::eR8G8B8A8Srgb,
+                                    vk::ImageTiling::eOptimal,
+                                    vk::ImageAspectFlagBits::eColor,
+                                    vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
+        auto image = std::make_unique<ImageResource>(vulkan, properties);
+
+        image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
+                                 vk::ImageLayout::eTransferDstOptimal);
+        image->copy_buffer(m_graphics_queue, *staging_buffer, image_size);
+        image->transition_layout(m_graphics_queue, vk::ImageLayout::eTransferDstOptimal,
+                                 vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        return std::move(image);
     }
 
     vk::UniqueSurfaceKHR Window::create_surface() const {
@@ -183,7 +248,13 @@ namespace tutorial {
         ubo_binding.setDescriptorCount(1);
         ubo_binding.setStageFlags(vk::ShaderStageFlagBits::eVertex);
 
-        const std::array bindings{ ubo_binding };
+        vk::DescriptorSetLayoutBinding sampler_binding{};
+        sampler_binding.setBinding(1);
+        sampler_binding.setDescriptorType(vk::DescriptorType::eCombinedImageSampler);
+        sampler_binding.setDescriptorCount(1);
+        sampler_binding.setStageFlags(vk::ShaderStageFlagBits::eFragment);
+
+        const std::array bindings{ ubo_binding, sampler_binding };
 
         vk::DescriptorSetLayoutCreateInfo ci{};
         ci.setBindings(bindings);
@@ -296,7 +367,11 @@ namespace tutorial {
         ubo_pool_size.setType(vk::DescriptorType::eUniformBuffer);
         ubo_pool_size.setDescriptorCount(m_frames->size());
 
-        const std::array pool_sizes{ ubo_pool_size };
+        vk::DescriptorPoolSize sampler_pool_size{};
+        sampler_pool_size.setType(vk::DescriptorType::eCombinedImageSampler);
+        sampler_pool_size.setDescriptorCount(m_frames->size());
+
+        const std::array pool_sizes{ ubo_pool_size, sampler_pool_size };
 
         vk::DescriptorPoolCreateInfo ci{};
         ci.setPoolSizes(pool_sizes);
@@ -330,7 +405,20 @@ namespace tutorial {
             ubo_write.setDescriptorCount(1);
             ubo_write.setBufferInfo(buffer_info);
 
-            const std::array writes{ ubo_write };
+            vk::DescriptorImageInfo image_info{};
+            image_info.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+            image_info.setImageView(*m_texture->view);
+            image_info.setSampler(*m_sampler);
+
+            vk::WriteDescriptorSet sampler_write{};
+            sampler_write.setDstSet(*descriptor_sets.at(i));
+            sampler_write.setDstBinding(1);
+            sampler_write.setDstArrayElement(0);
+            sampler_write.setDescriptorType(vk::DescriptorType::eCombinedImageSampler);
+            sampler_write.setDescriptorCount(1);
+            sampler_write.setImageInfo(image_info);
+
+            const std::array writes{ ubo_write, sampler_write };
             vulkan->logical_device->updateDescriptorSets(writes, nullptr);
         }
 
@@ -386,33 +474,33 @@ namespace tutorial {
         return std::move(views);
     }
 
-    std::unique_ptr<ImageResource> Window::create_color_image() const {
-        ImageProperties properties{ get_size<uint32_t>(),
-                                    1,
-                                    m_msaa_samples,
-                                    m_surface_format.format,
-                                    vk::ImageTiling::eOptimal,
-                                    vk::ImageAspectFlagBits::eColor,
-                                    vk::ImageUsageFlagBits::eTransientAttachment |
-                                        vk::ImageUsageFlagBits::eColorAttachment,
-                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
-        return std::make_unique<ImageResource>(vulkan, properties);
-    }
+    // std::unique_ptr<ImageResource> Window::create_color_image() const {
+    //     ImageProperties properties{ get_size<uint32_t>(),
+    //                                 1,
+    //                                 m_msaa_samples,
+    //                                 m_surface_format.format,
+    //                                 vk::ImageTiling::eOptimal,
+    //                                 vk::ImageAspectFlagBits::eColor,
+    //                                 vk::ImageUsageFlagBits::eTransientAttachment |
+    //                                     vk::ImageUsageFlagBits::eColorAttachment,
+    //                                 vk::MemoryPropertyFlagBits::eDeviceLocal };
+    //     return std::make_unique<ImageResource>(vulkan, properties);
+    // }
 
-    std::unique_ptr<ImageResource> Window::create_depth_image() const {
-        ImageProperties properties{ get_size<uint32_t>(),
-                                    1,
-                                    m_msaa_samples,
-                                    vulkan->find_depth_format(),
-                                    vk::ImageTiling::eOptimal,
-                                    vk::ImageAspectFlagBits::eDepth,
-                                    vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
-        auto image = std::make_unique<ImageResource>(vulkan, properties);
-        image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
-                                 vk::ImageLayout::eDepthStencilAttachmentOptimal);
-        return std::move(image);
-    }
+    // std::unique_ptr<ImageResource> Window::create_depth_image() const {
+    //     ImageProperties properties{ get_size<uint32_t>(),
+    //                                 1,
+    //                                 m_msaa_samples,
+    //                                 vulkan->find_depth_format(),
+    //                                 vk::ImageTiling::eOptimal,
+    //                                 vk::ImageAspectFlagBits::eDepth,
+    //                                 vk::ImageUsageFlagBits::eDepthStencilAttachment,
+    //                                 vk::MemoryPropertyFlagBits::eDeviceLocal };
+    //     auto image = std::make_unique<ImageResource>(vulkan, properties);
+    //     image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
+    //                              vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    //     return std::move(image);
+    // }
 
     std::vector<vk::UniqueFramebuffer> Window::create_framebuffers() const {
         std::vector<vk::UniqueFramebuffer> framebuffers;
@@ -429,6 +517,29 @@ namespace tutorial {
         }
 
         return std::move(framebuffers);
+    }
+
+    vk::UniqueSampler Window::create_sampler() const {
+        auto properties = vulkan->physical_device.getProperties();
+
+        vk::SamplerCreateInfo ci{};
+        ci.setMagFilter(vk::Filter::eLinear);
+        ci.setMinFilter(vk::Filter::eLinear);
+        ci.setAddressModeU(vk::SamplerAddressMode::eRepeat);
+        ci.setAddressModeV(vk::SamplerAddressMode::eRepeat);
+        ci.setAddressModeW(vk::SamplerAddressMode::eRepeat);
+        ci.setAnisotropyEnable(VK_TRUE);
+        ci.setMaxAnisotropy(properties.limits.maxSamplerAnisotropy);
+        ci.setBorderColor(vk::BorderColor::eIntOpaqueBlack);
+        ci.setUnnormalizedCoordinates(VK_FALSE);
+        ci.setCompareEnable(VK_FALSE);
+        ci.setCompareOp(vk::CompareOp::eAlways);
+        ci.setMipmapMode(vk::SamplerMipmapMode::eLinear);
+        ci.setMipLodBias(0.0F);
+        ci.setMinLod(0.0F);
+        ci.setMaxLod(static_cast<float>(1));
+
+        return vulkan->logical_device->createSamplerUnique(ci);
     }
 
     void Window::update_size() {
@@ -495,15 +606,23 @@ namespace tutorial {
         frame.command_buffer->setViewport(0, viewport);
         frame.command_buffer->setScissor(0, scissor);
 
-        for (const auto& object : m_objects) {
-            constexpr std::array no_offset{ vk::DeviceSize(0) };
-            frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
-            frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0, vk::IndexType::eUint16);
-            frame.command_buffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_pipeline_layout, 0,
-                                                     *m_descriptor_sets.at(m_frames->current_index()),
-                                                     nullptr);
-            frame.command_buffer->drawIndexed(object.index_count, 1, 0, 0, 0);
-        }
+        // for (const auto& object : m_objects) {
+        //     constexpr std::array no_offset{ vk::DeviceSize(0) };
+        //     frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
+        //     frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0, vk::IndexType::eUint16);
+        //     frame.command_buffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_pipeline_layout,
+        //     0,
+        //                                              *m_descriptor_sets.at(m_frames->current_index()),
+        //                                              nullptr);
+        //     frame.command_buffer->drawIndexed(object.index_count, 1, 0, 0, 0);
+        // }
+
+        constexpr std::array no_offset{ vk::DeviceSize(0) };
+        frame.command_buffer->bindVertexBuffers(0, *m_object->vertex_buffer, no_offset);
+        frame.command_buffer->bindIndexBuffer(*m_object->index_buffer, 0, vk::IndexType::eUint16);
+        frame.command_buffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_pipeline_layout, 0,
+                                                 *m_descriptor_sets.at(m_frames->current_index()), nullptr);
+        frame.command_buffer->drawIndexed(m_object->index_count, 1, 0, 0, 0);
 
         frame.command_buffer->endRenderPass();
         frame.command_buffer->end();

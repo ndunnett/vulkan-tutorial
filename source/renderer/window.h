@@ -11,6 +11,7 @@ namespace tutorial {
 
         void rebuild_swapchain();
         void draw_frame();
+        std::unique_ptr<ImageResource> create_texture(std::string_view path);
 
         template<class T>
         std::pair<T, T> get_size() const {
@@ -49,9 +50,10 @@ namespace tutorial {
         std::vector<vk::UniqueDescriptorSet> create_descriptor_sets() const;
         vk::UniqueSwapchainKHR create_swapchain(const vk::SwapchainKHR& old_swapchain = VK_NULL_HANDLE) const;
         std::vector<vk::UniqueImageView> create_swapchain_views() const;
-        std::unique_ptr<ImageResource> create_color_image() const;
-        std::unique_ptr<ImageResource> create_depth_image() const;
+        // std::unique_ptr<ImageResource> create_color_image() const;
+        // std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
+        vk::UniqueSampler create_sampler() const;
 
         void update_size();
         void get_swapchain_details();
@@ -72,16 +74,20 @@ namespace tutorial {
         std::vector<vk::UniqueImageView> m_swapchain_views;
         vk::UniqueRenderPass m_render_pass{};
         std::vector<vk::UniqueFramebuffer> m_framebuffers;
+        vk::UniqueSampler m_sampler{};
         vk::UniqueDescriptorSetLayout m_descriptor_set_layout{};
         vk::UniquePipelineLayout m_pipeline_layout{};
         vk::UniquePipeline m_graphics_pipeline{};
-        std::unique_ptr<ImageResource> m_color_image;
-        std::unique_ptr<ImageResource> m_depth_image;
+        // std::unique_ptr<ImageResource> m_color_image;
+        // std::unique_ptr<ImageResource> m_depth_image;
         std::unique_ptr<FrameTransients> m_frames;
         vk::UniqueDescriptorPool m_descriptor_pool{};
         std::vector<vk::UniqueDescriptorSet> m_descriptor_sets;
         bool m_framebuffer_resized = false;
 
         std::vector<Object> m_objects;
+
+        std::unique_ptr<Object> m_object = nullptr;
+        std::unique_ptr<ImageResource> m_texture = nullptr;
     };
 }

@@ -10,16 +10,7 @@ namespace tutorial {
     public:
         Application()
             : renderer(std::make_unique<Renderer>()),
-              window(renderer->create_window(window_title, window_size)) {
-            const std::vector<Vertex> vertices{ { { -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F } },
-                                                { { 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F } },
-                                                { { 0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F } },
-                                                { { -0.5F, 0.5F }, { 1.0F, 1.0F, 1.0F } } };
-            
-            const std::vector<uint16_t> indices{ 0, 1, 2, 2, 3, 0 };
-
-            window->add_object(vertices, indices);
-        }
+              window(renderer->create_window(window_title, window_size)) {}
 
         ~Application() {}
 
