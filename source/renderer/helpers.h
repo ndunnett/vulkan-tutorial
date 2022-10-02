@@ -130,6 +130,25 @@ namespace tutorial {
         vk::UniqueCommandBuffer buffer;
     };
 
+    struct ImageProperties {
+        ImageProperties() = default;
+        ImageProperties(std::pair<uint32_t, uint32_t> size, uint32_t mip_levels,
+                        vk::SampleCountFlagBits samples, vk::Format format, vk::ImageTiling tiling,
+                        vk::ImageAspectFlags aspect_flags, vk::ImageUsageFlags usage,
+                        vk::MemoryPropertyFlags memory)
+            : size(size), mip_levels(mip_levels), samples(samples), format(format), tiling(tiling),
+              aspect_flags(aspect_flags), usage(usage), memory(memory) {}
+
+        std::pair<uint32_t, uint32_t> size;
+        uint32_t mip_levels;
+        vk::SampleCountFlagBits samples;
+        vk::Format format;
+        vk::ImageTiling tiling;
+        vk::ImageAspectFlags aspect_flags;
+        vk::ImageUsageFlags usage;
+        vk::MemoryPropertyFlags memory;
+    };
+
     struct UniformBufferObject {
         alignas(16) glm::mat4 model;
         alignas(16) glm::mat4 view;
