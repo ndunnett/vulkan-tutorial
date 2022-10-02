@@ -156,7 +156,7 @@ namespace tutorial {
     };
 
     struct Vertex {
-        glm::vec2 pos;
+        glm::vec3 pos;
         glm::vec3 color;
         glm::vec2 tex_coord;
 
@@ -200,7 +200,7 @@ namespace std {
     template<>
     struct hash<tutorial::Vertex> {
         size_t operator()(tutorial::Vertex const& vertex) const {
-            return ((hash<glm::vec2>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
                    (hash<glm::vec2>()(vertex.tex_coord) << 1);
         }
     };

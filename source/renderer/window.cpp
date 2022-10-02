@@ -21,12 +21,18 @@ namespace tutorial {
             throw std::runtime_error("failed to create GLFW window!");
         }
 
-        const std::vector<Vertex> vertices{ { { -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-                                            { { 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-                                            { { 0.5F, 0.5F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-                                            { { -0.5F, 0.5F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } } };
+        const std::vector<Vertex> vertices{
+            { { -0.5F, -0.5F, 0.0F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
+            { { 0.5F, -0.5F, 0.0F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
+            { { 0.5F, 0.5F, 0.0F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
+            { { -0.5F, 0.5F, 0.0F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } },
+            { { -0.5F, -0.5F, -0.2F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
+            { { 0.5F, -0.5F, -0.2F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
+            { { 0.5F, 0.5F, -0.2F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
+            { { -0.5F, 0.5F, -0.2F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } }
+        };
 
-        const std::vector<uint16_t> indices{ 0, 1, 2, 2, 3, 0 };
+        const std::vector<uint16_t> indices{ 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4 };
 
         m_surface = create_surface();
         vulkan->initialise_devices(*m_surface);
@@ -42,7 +48,7 @@ namespace tutorial {
         m_pipeline_layout = create_pipeline_layout();
         m_graphics_pipeline = create_graphics_pipeline();
         // m_color_image = create_color_image();
-        // m_depth_image = create_depth_image();
+        m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
         m_sampler = create_sampler();
         m_frames = std::make_unique<FrameTransients>(vulkan);
@@ -69,7 +75,7 @@ namespace tutorial {
         m_swapchain_images = vulkan->logical_device->getSwapchainImagesKHR(*m_swapchain);
         m_swapchain_views = create_swapchain_views();
         // m_color_image = create_color_image();
-        // m_depth_image = create_depth_image();
+        m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
     }
 
@@ -180,19 +186,19 @@ namespace tutorial {
         color_attachment_ref.setAttachment(0);
         color_attachment_ref.setLayout(vk::ImageLayout::eColorAttachmentOptimal);
 
-        // vk::AttachmentDescription depth_attachment{};
-        // depth_attachment.setFormat(vulkan->find_depth_format());
-        // depth_attachment.setSamples(m_msaa_samples);
-        // depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
-        // depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare);
-        // depth_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
-        // depth_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
-        // depth_attachment.setInitialLayout(vk::ImageLayout::eUndefined);
-        // depth_attachment.setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        vk::AttachmentDescription depth_attachment{};
+        depth_attachment.setFormat(vulkan->find_depth_format());
+        depth_attachment.setSamples(m_msaa_samples);
+        depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+        depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare);
+        depth_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+        depth_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+        depth_attachment.setInitialLayout(vk::ImageLayout::eUndefined);
+        depth_attachment.setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-        // vk::AttachmentReference depth_attachment_ref{};
-        // depth_attachment_ref.setAttachment(1);
-        // depth_attachment_ref.setLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        vk::AttachmentReference depth_attachment_ref{};
+        depth_attachment_ref.setAttachment(1);
+        depth_attachment_ref.setLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
         // vk::AttachmentDescription color_attachment_resolve{};
         // color_attachment_resolve.setFormat(m_surface_format.format);
@@ -211,7 +217,7 @@ namespace tutorial {
         vk::SubpassDescription subpass{};
         subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
         subpass.setColorAttachments(color_attachment_ref);
-        // subpass.setPDepthStencilAttachment(&depth_attachment_ref);
+        subpass.setPDepthStencilAttachment(&depth_attachment_ref);
         // subpass.setResolveAttachments(color_attachment_resolve_ref);
 
         vk::SubpassDependency dependency{};
@@ -223,18 +229,18 @@ namespace tutorial {
         dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
         // dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
         // dependency.setDstSubpass(0);
-        // dependency.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput |
-        //                            vk::PipelineStageFlagBits::eEarlyFragmentTests);
-        // dependency.setSrcAccessMask(vk::AccessFlagBits::eNone);
-        // dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput |
-        //                            vk::PipelineStageFlagBits::eEarlyFragmentTests);
-        // dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite |
-        //                             vk::AccessFlagBits::eDepthStencilAttachmentWrite);
+        dependency.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                                   vk::PipelineStageFlagBits::eEarlyFragmentTests);
+        dependency.setSrcAccessMask(vk::AccessFlagBits::eNone);
+        dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                                   vk::PipelineStageFlagBits::eEarlyFragmentTests);
+        dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite |
+                                    vk::AccessFlagBits::eDepthStencilAttachmentWrite);
 
-        // const std::array attachments{ color_attachment, depth_attachment, color_attachment_resolve };
+        const std::array attachments{ color_attachment, depth_attachment };
 
         vk::RenderPassCreateInfo render_pass_ci{};
-        render_pass_ci.setAttachments(color_attachment);
+        render_pass_ci.setAttachments(attachments);
         render_pass_ci.setSubpasses(subpass);
         render_pass_ci.setDependencies(dependency);
 
@@ -332,12 +338,12 @@ namespace tutorial {
         color_blend_ci.setLogicOp(vk::LogicOp::eCopy);
         color_blend_ci.setAttachments(color_blend_attachment);
 
-        // vk::PipelineDepthStencilStateCreateInfo depth_stencil_ci{};
-        // depth_stencil_ci.setDepthTestEnable(VK_TRUE);
-        // depth_stencil_ci.setDepthWriteEnable(VK_TRUE);
-        // depth_stencil_ci.setDepthCompareOp(vk::CompareOp::eLess);
-        // depth_stencil_ci.setDepthBoundsTestEnable(VK_FALSE);
-        // depth_stencil_ci.setStencilTestEnable(VK_FALSE);
+        vk::PipelineDepthStencilStateCreateInfo depth_stencil_ci{};
+        depth_stencil_ci.setDepthTestEnable(VK_TRUE);
+        depth_stencil_ci.setDepthWriteEnable(VK_TRUE);
+        depth_stencil_ci.setDepthCompareOp(vk::CompareOp::eLess);
+        depth_stencil_ci.setDepthBoundsTestEnable(VK_FALSE);
+        depth_stencil_ci.setStencilTestEnable(VK_FALSE);
 
         vk::GraphicsPipelineCreateInfo graphics_pipeline_ci{};
         graphics_pipeline_ci.setStages(shader_stage_cis);
@@ -346,7 +352,7 @@ namespace tutorial {
         graphics_pipeline_ci.setPViewportState(&viewport_ci);
         graphics_pipeline_ci.setPRasterizationState(&rasterizer_ci);
         graphics_pipeline_ci.setPMultisampleState(&multisampling_ci);
-        // graphics_pipeline_ci.setPDepthStencilState(&depth_stencil_ci);
+        graphics_pipeline_ci.setPDepthStencilState(&depth_stencil_ci);
         graphics_pipeline_ci.setPColorBlendState(&color_blend_ci);
         graphics_pipeline_ci.setPDynamicState(&dynamic_state_ci);
         graphics_pipeline_ci.setLayout(*m_pipeline_layout);
@@ -487,29 +493,29 @@ namespace tutorial {
     //     return std::make_unique<ImageResource>(vulkan, properties);
     // }
 
-    // std::unique_ptr<ImageResource> Window::create_depth_image() const {
-    //     ImageProperties properties{ get_size<uint32_t>(),
-    //                                 1,
-    //                                 m_msaa_samples,
-    //                                 vulkan->find_depth_format(),
-    //                                 vk::ImageTiling::eOptimal,
-    //                                 vk::ImageAspectFlagBits::eDepth,
-    //                                 vk::ImageUsageFlagBits::eDepthStencilAttachment,
-    //                                 vk::MemoryPropertyFlagBits::eDeviceLocal };
-    //     auto image = std::make_unique<ImageResource>(vulkan, properties);
-    //     image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
-    //                              vk::ImageLayout::eDepthStencilAttachmentOptimal);
-    //     return std::move(image);
-    // }
+    std::unique_ptr<ImageResource> Window::create_depth_image() const {
+        ImageProperties properties{ get_size<uint32_t>(),
+                                    1,
+                                    m_msaa_samples,
+                                    vulkan->find_depth_format(),
+                                    vk::ImageTiling::eOptimal,
+                                    vk::ImageAspectFlagBits::eDepth,
+                                    vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
+        auto image = std::make_unique<ImageResource>(vulkan, properties);
+        image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
+                                 vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        return std::move(image);
+    }
 
     std::vector<vk::UniqueFramebuffer> Window::create_framebuffers() const {
         std::vector<vk::UniqueFramebuffer> framebuffers;
 
         for (const auto& image_view : m_swapchain_views) {
-            // const std::array attachments{ *m_color_image->view, *m_depth_image->view, *image_view };
+            const std::array attachments{ *image_view, *m_depth_image->view };
             vk::FramebufferCreateInfo ci{};
             ci.setRenderPass(*m_render_pass);
-            ci.setAttachments(*image_view);
+            ci.setAttachments(attachments);
             ci.setWidth(m_extent.width);
             ci.setHeight(m_extent.height);
             ci.setLayers(1);
@@ -587,9 +593,11 @@ namespace tutorial {
         command_buffer_bi.setPInheritanceInfo({});
         frame.command_buffer->begin(command_buffer_bi);
 
-        constexpr std::array clear_color{ 0.0F, 0.0F, 0.0F, 1.0F };
-        const vk::ClearValue clear_value{ clear_color };
-        const std::array clear_values{ clear_value, clear_value };
+        constexpr std::array black{ 0.0F, 0.0F, 0.0F, 1.0F };
+        vk::ClearValue clear_color(black);
+        vk::ClearValue clear_depth({ 1.0F, 0 });
+
+        const std::array clear_values{ clear_color, clear_depth };
 
         auto size = get_size<float>();
         vk::Viewport viewport{ 0.0F, 0.0F, size.first, size.second, 0.0F, 1.0F };
