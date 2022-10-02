@@ -244,7 +244,7 @@ namespace tutorial {
     }
 
     std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory>
-    VulkanCore::create_buffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+    VulkanCore::create_buffer(size_t size, vk::BufferUsageFlags usage,
                               vk::MemoryPropertyFlags properties) const {
         std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory> buffer_pair;
 
@@ -272,13 +272,9 @@ namespace tutorial {
     }
 
     void VulkanCore::copy_buffer(const vk::Queue& queue, const vk::Buffer& destination,
-                                 const vk::Buffer& source, vk::DeviceSize size, vk::DeviceSize dst_offset,
-                                 vk::DeviceSize src_offset) const {
-        vk::BufferCopy copy_region{};
-        copy_region.setSize(size);
-        copy_region.setDstOffset(dst_offset);
-        copy_region.setSrcOffset(src_offset);
-
+                                 const vk::Buffer& source, size_t size, size_t dst_offset,
+                                 size_t src_offset) const {
+        vk::BufferCopy copy_region{ src_offset, dst_offset, size };
         auto commands = get_single_time_commands(queue);
         commands.buffer->copyBuffer(source, destination, copy_region);
     }

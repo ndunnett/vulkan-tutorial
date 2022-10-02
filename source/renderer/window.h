@@ -122,7 +122,7 @@ namespace tutorial {
         Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices,
                const std::vector<uint16_t>& indices)
             : vulkan(vulkan), index_count(indices.size()) {
-            vk::DeviceSize vertex_buffer_size = sizeof(Vertex) * vertices.size();
+            size_t vertex_buffer_size = sizeof(Vertex) * vertices.size();
 
             auto [vertex_staging_buffer, vertex_staging_memory] = vulkan->create_buffer(
                 vertex_buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
@@ -135,7 +135,7 @@ namespace tutorial {
                 vk::MemoryPropertyFlagBits::eDeviceLocal);
             vulkan->copy_buffer(queue, *vertex_buffer, *vertex_staging_buffer, vertex_buffer_size);
 
-            vk::DeviceSize index_buffer_size = sizeof(uint16_t) * indices.size();
+            size_t index_buffer_size = sizeof(uint16_t) * indices.size();
 
             auto [index_staging_buffer, index_staging_memory] = vulkan->create_buffer(
                 index_buffer_size, vk::BufferUsageFlagBits::eTransferSrc,

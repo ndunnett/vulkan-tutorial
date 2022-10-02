@@ -16,13 +16,11 @@ namespace tutorial {
         vk::Format find_supported_format(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling,
                                          vk::FormatFeatureFlags features) const;
         std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory>
-        create_buffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                      vk::MemoryPropertyFlags properties) const;
+        create_buffer(size_t size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties) const;
         void copy_to_memory(const vk::DeviceMemory& memory, const void* source, size_t size,
                             size_t offset = 0) const;
         void copy_buffer(const vk::Queue& queue, const vk::Buffer& destination, const vk::Buffer& source,
-                         vk::DeviceSize size, vk::DeviceSize dst_offset = 0,
-                         vk::DeviceSize src_offset = 0) const;
+                         size_t size, size_t dst_offset = 0, size_t src_offset = 0) const;
 
         inline auto get_deleter() const {
             return vk::ObjectDestroy<vk::Instance, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE>(instance.get());
