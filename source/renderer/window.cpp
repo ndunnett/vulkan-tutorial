@@ -149,7 +149,7 @@ namespace tutorial {
             barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
         }
 
-        commands.get_buffer().pipelineBarrier(source_stage, destination_stage, {}, nullptr, nullptr, barrier);
+        commands.buffer->pipelineBarrier(source_stage, destination_stage, {}, nullptr, nullptr, barrier);
     }
 
     Window::Window(VulkanCore* vulkan, std::string_view title, std::pair<int, int> size,

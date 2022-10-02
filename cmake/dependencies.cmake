@@ -43,7 +43,6 @@ target_include_directories(dependencies SYSTEM INTERFACE
 
 # Build GLM library and link to interface library
 FetchContent_MakeAvailable(glm_repo)
-include_directories(${glm_repo_SOURCE_DIR})
 target_link_libraries(dependencies INTERFACE
     glm
 )
@@ -65,7 +64,6 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glfw_repo)
-include_directories(${glfw_repo_SOURCE_DIR})
 target_link_libraries(dependencies INTERFACE
     glfw
 )

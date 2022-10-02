@@ -283,29 +283,12 @@ namespace tutorial {
     void VulkanCore::copy_buffer(const vk::Queue& queue, const vk::Buffer& destination,
                                  const vk::Buffer& source, vk::DeviceSize size, vk::DeviceSize dst_offset,
                                  vk::DeviceSize src_offset) {
-        vk::CommandBufferAllocateInfo ai{};
-        ai.setLevel(vk::CommandBufferLevel::ePrimary);
-        ai.setCommandPool(*m_command_pool);
-        ai.setCommandBufferCount(1);
-
-        vk::CommandBufferBeginInfo bi{};
-        bi.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
         vk::BufferCopy copy_region{};
         copy_region.setSize(size);
         copy_region.setDstOffset(dst_offset);
         copy_region.setSrcOffset(src_offset);
 
-        vk::UniqueCommandBuffer command_buffer =
-            std::move(m_logical_device->allocateCommandBuffersUnique(ai).at(0));
-        command_buffer->begin(bi);
-        command_buffer->copyBuffer(source, destination, copy_region);
-        command_buffer->end();
-
-        vk::SubmitInfo si{};
-        si.setCommandBuffers(*command_buffer);
-
-        queue.submit(si);
-        queue.waitIdle();
+        auto commands = get_single_time_commands(queue);
+        commands.buffer->copyBuffer(source, destination, copy_region);
     }
 }

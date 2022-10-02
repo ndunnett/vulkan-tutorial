@@ -107,33 +107,27 @@ namespace tutorial {
     };
 
     struct SingleTimeCommands {
-    public:
         SingleTimeCommands(const vk::Device& device, const vk::CommandPool& command_pool,
                            const vk::Queue& queue)
-            : m_queue(queue) {
+            : queue(queue) {
             vk::CommandBufferAllocateInfo ai{};
             ai.setLevel(vk::CommandBufferLevel::ePrimary);
             ai.setCommandPool(command_pool);
             ai.setCommandBufferCount(1);
-            m_command_buffer = std::move(device.allocateCommandBuffersUnique(ai).at(0));
-            m_command_buffer->begin({ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+            buffer = std::move(device.allocateCommandBuffersUnique(ai).at(0));
+            buffer->begin({ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
         }
 
         ~SingleTimeCommands() {
-            m_command_buffer->end();
+            buffer->end();
             vk::SubmitInfo si{};
-            si.setCommandBuffers(*m_command_buffer);
-            m_queue.submit(si);
-            m_queue.waitIdle();
+            si.setCommandBuffers(*buffer);
+            queue.submit(si);
+            queue.waitIdle();
         }
 
-        inline const vk::CommandBuffer& get_buffer() {
-            return *m_command_buffer;
-        }
-
-    private:
-        const vk::Queue& m_queue;
-        vk::UniqueCommandBuffer m_command_buffer;
+        const vk::Queue& queue;
+        vk::UniqueCommandBuffer buffer;
     };
 
     struct UniformBufferObject {
