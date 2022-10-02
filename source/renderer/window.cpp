@@ -3,29 +3,29 @@
 namespace tutorial {
     FrameTransients::FrameTransients(VulkanCore* vulkan, size_t frames_in_flight) : vulkan(vulkan) {
         vk::CommandBufferAllocateInfo ai{};
-        ai.setCommandPool(vulkan->get_command_pool());
+        ai.setCommandPool(*vulkan->command_pool);
         ai.setLevel(vk::CommandBufferLevel::ePrimary);
         ai.setCommandBufferCount(frames_in_flight);
 
-        for (auto& command_buffer : vulkan->get_logical_device().allocateCommandBuffersUnique(ai)) {
+        for (auto& command_buffer : vulkan->logical_device->allocateCommandBuffersUnique(ai)) {
             m_frames.emplace_back(vulkan, command_buffer);
         }
     }
 
     void FrameTransients::wait_for_fences() {
-        if (vulkan->get_logical_device().waitForFences(*m_frames.at(m_frame_index).in_flight, VK_TRUE,
-                                                       UINT64_MAX) != vk::Result::eSuccess) {
+        if (vulkan->logical_device->waitForFences(*m_frames.at(m_frame_index).in_flight, VK_TRUE,
+                                                  UINT64_MAX) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to wait for frame fences!");
         }
     }
 
     void FrameTransients::reset_fences() {
-        vulkan->get_logical_device().resetFences(*m_frames.at(m_frame_index).in_flight);
+        vulkan->logical_device->resetFences(*m_frames.at(m_frame_index).in_flight);
     }
 
     vk::ResultValue<uint32_t> FrameTransients::next_image_index(const vk::SwapchainKHR& swapchain) {
-        auto index = vulkan->get_logical_device().acquireNextImageKHR(
-            swapchain, UINT64_MAX, *m_frames.at(m_frame_index).image_available);
+        auto index = vulkan->logical_device->acquireNextImageKHR(swapchain, UINT64_MAX,
+                                                                 *m_frames.at(m_frame_index).image_available);
 
         if (index.result != vk::Result::eSuccess && index.result != vk::Result::eSuboptimalKHR) {
             throw std::runtime_error("failed to acquire swapchain image!");
@@ -80,15 +80,15 @@ namespace tutorial {
         image_ci.setSharingMode(vk::SharingMode::eExclusive);
         image_ci.setSamples(properties.samples);
 
-        image = vulkan->get_logical_device().createImageUnique(image_ci);
-        auto mem_req = vulkan->get_logical_device().getImageMemoryRequirements(*image);
+        image = vulkan->logical_device->createImageUnique(image_ci);
+        auto mem_req = vulkan->logical_device->getImageMemoryRequirements(*image);
 
         vk::MemoryAllocateInfo image_ai{};
         image_ai.setAllocationSize(mem_req.size);
         image_ai.setMemoryTypeIndex(vulkan->find_memory_type(mem_req.memoryTypeBits, properties.memory));
 
-        memory = vulkan->get_logical_device().allocateMemoryUnique(image_ai);
-        vulkan->get_logical_device().bindImageMemory(*image, *memory, 0);
+        memory = vulkan->logical_device->allocateMemoryUnique(image_ai);
+        vulkan->logical_device->bindImageMemory(*image, *memory, 0);
 
         vk::ImageViewCreateInfo view_ci{};
         view_ci.setImage(*image);
@@ -97,7 +97,7 @@ namespace tutorial {
         view_ci.setComponents({ {}, {}, {}, {} });
         view_ci.setSubresourceRange({ properties.aspect_flags, 0, properties.mip_levels, 0, 1 });
 
-        view = vulkan->get_logical_device().createImageViewUnique(view_ci);
+        view = vulkan->logical_device->createImageViewUnique(view_ci);
     }
 
     void ImageResource::transition_layout(const vk::Queue& queue, vk::ImageLayout old_layout,
@@ -172,10 +172,11 @@ namespace tutorial {
         m_surface = create_surface();
         vulkan->initialise_devices(*m_surface);
         // m_msaa_samples = vulkan->get_max_msaa_samples();
-        std::tie(m_graphics_queue, m_present_queue) = vulkan->get_queues();
+        m_graphics_queue = vulkan->logical_device->getQueue(vulkan->queue_family_indices.graphics.value(), 0);
+        m_present_queue = vulkan->logical_device->getQueue(vulkan->queue_family_indices.present.value(), 0);
         get_swapchain_details();
         m_swapchain = create_swapchain();
-        m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
+        m_swapchain_images = vulkan->logical_device->getSwapchainImagesKHR(*m_swapchain);
         m_swapchain_views = create_swapchain_views();
         m_render_pass = create_render_pass();
         m_descriptor_set_layout = create_descriptor_set_layout();
@@ -195,13 +196,13 @@ namespace tutorial {
 
     void Window::rebuild_swapchain() {
         update_size();
-        vulkan->get_logical_device().waitIdle();
+        vulkan->logical_device->waitIdle();
         m_framebuffers.clear();
         m_swapchain_views.clear();
         m_swapchain_images.clear();
         get_swapchain_details();
         m_swapchain = create_swapchain(*m_swapchain);
-        m_swapchain_images = vulkan->get_logical_device().getSwapchainImagesKHR(*m_swapchain);
+        m_swapchain_images = vulkan->logical_device->getSwapchainImagesKHR(*m_swapchain);
         m_swapchain_views = create_swapchain_views();
         m_color_image = create_color_image();
         m_depth_image = create_depth_image();
@@ -238,7 +239,7 @@ namespace tutorial {
     vk::UniqueSurfaceKHR Window::create_surface() const {
         VkSurfaceKHR raw_surface{};
 
-        if (glfwCreateWindowSurface(vulkan->get_instance(), m_window, nullptr, &raw_surface) != VK_SUCCESS) {
+        if (glfwCreateWindowSurface(vulkan->instance.get(), m_window, nullptr, &raw_surface) != VK_SUCCESS) {
             throw std::runtime_error("failed to create window surface!");
         }
 
@@ -247,7 +248,7 @@ namespace tutorial {
 
     vk::UniqueShaderModule Window::create_shader_module(const ShaderSource& shader_source) const {
         auto compiled_shader = compile_shader(shader_source);
-        return vulkan->get_logical_device().createShaderModuleUnique({ {}, compiled_shader });
+        return vulkan->logical_device->createShaderModuleUnique({ {}, compiled_shader });
     }
 
     vk::UniqueRenderPass Window::create_render_pass() const {
@@ -323,7 +324,7 @@ namespace tutorial {
         render_pass_ci.setSubpasses(subpass);
         render_pass_ci.setDependencies(dependency);
 
-        return vulkan->get_logical_device().createRenderPassUnique(render_pass_ci);
+        return vulkan->logical_device->createRenderPassUnique(render_pass_ci);
     }
 
     vk::UniqueDescriptorSetLayout Window::create_descriptor_set_layout() const {
@@ -338,13 +339,13 @@ namespace tutorial {
         vk::DescriptorSetLayoutCreateInfo ci{};
         ci.setBindings(bindings);
 
-        return vulkan->get_logical_device().createDescriptorSetLayoutUnique(ci);
+        return vulkan->logical_device->createDescriptorSetLayoutUnique(ci);
     }
 
     vk::UniquePipelineLayout Window::create_pipeline_layout() const {
         vk::PipelineLayoutCreateInfo ci{};
         ci.setSetLayouts(*m_descriptor_set_layout);
-        return vulkan->get_logical_device().createPipelineLayoutUnique(ci);
+        return vulkan->logical_device->createPipelineLayoutUnique(ci);
     }
 
     vk::UniquePipeline Window::create_graphics_pipeline() const {
@@ -432,7 +433,7 @@ namespace tutorial {
         graphics_pipeline_ci.setRenderPass(*m_render_pass);
         graphics_pipeline_ci.setSubpass(0);
 
-        auto create = vulkan->get_logical_device().createGraphicsPipelineUnique({}, graphics_pipeline_ci);
+        auto create = vulkan->logical_device->createGraphicsPipelineUnique({}, graphics_pipeline_ci);
 
         if (create.result != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create graphics pipeline!");
@@ -453,7 +454,7 @@ namespace tutorial {
         ci.setMaxSets(m_frames->size());
         ci.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
 
-        return vulkan->get_logical_device().createDescriptorPoolUnique(ci);
+        return vulkan->logical_device->createDescriptorPoolUnique(ci);
     }
 
     std::vector<vk::UniqueDescriptorSet> Window::create_descriptor_sets() const {
@@ -464,7 +465,7 @@ namespace tutorial {
         ai.setSetLayouts(layouts);
 
         std::vector<vk::UniqueDescriptorSet> descriptor_sets =
-            vulkan->get_logical_device().allocateDescriptorSetsUnique(ai);
+            vulkan->logical_device->allocateDescriptorSetsUnique(ai);
 
         for (size_t i = 0; i < m_frames->size(); i++) {
             vk::DescriptorBufferInfo buffer_info{};
@@ -481,7 +482,7 @@ namespace tutorial {
             ubo_write.setBufferInfo(buffer_info);
 
             const std::array writes{ ubo_write };
-            vulkan->get_logical_device().updateDescriptorSets(writes, nullptr);
+            vulkan->logical_device->updateDescriptorSets(writes, nullptr);
         }
 
         return std::move(descriptor_sets);
@@ -502,7 +503,7 @@ namespace tutorial {
         ci.setImageArrayLayers(1);
         ci.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment);
 
-        auto indices = QueueFamilyIndices(vulkan->get_physical_device(), *m_surface);
+        auto indices = QueueFamilyIndices(vulkan->physical_device, *m_surface);
         auto index_values = indices.values();
         if (indices.set().size() > 1) {
             ci.setImageSharingMode(vk::SharingMode::eConcurrent);
@@ -517,7 +518,7 @@ namespace tutorial {
         ci.setClipped(VK_TRUE);
         ci.setOldSwapchain(old_swapchain);
 
-        return vulkan->get_logical_device().createSwapchainKHRUnique(ci);
+        return vulkan->logical_device->createSwapchainKHRUnique(ci);
     }
 
     std::vector<vk::UniqueImageView> Window::create_swapchain_views() const {
@@ -530,7 +531,7 @@ namespace tutorial {
             ci.setFormat(m_surface_format.format);
             ci.setComponents({ {}, {}, {}, {} });
             ci.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-            views.emplace_back(vulkan->get_logical_device().createImageViewUnique(ci));
+            views.emplace_back(vulkan->logical_device->createImageViewUnique(ci));
         }
 
         return std::move(views);
@@ -575,7 +576,7 @@ namespace tutorial {
             ci.setWidth(m_extent.width);
             ci.setHeight(m_extent.height);
             ci.setLayers(1);
-            framebuffers.push_back(vulkan->get_logical_device().createFramebufferUnique(ci));
+            framebuffers.push_back(vulkan->logical_device->createFramebufferUnique(ci));
         }
 
         return std::move(framebuffers);
@@ -598,7 +599,7 @@ namespace tutorial {
     }
 
     void Window::get_swapchain_details() {
-        m_support = { vulkan->get_physical_device(), *m_surface };
+        m_support = { vulkan->physical_device, *m_surface };
 
         for (auto format : m_support.formats) {
             if (format.format == vk::Format::eB8G8R8A8Srgb &&

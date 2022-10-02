@@ -11,7 +11,7 @@ namespace tutorial {
         ~Renderer() {}
 
         inline void wait_idle() {
-            vulkan->get_logical_device().waitIdle();
+            vulkan->logical_device->waitIdle();
         }
 
         inline auto create_window(std::string_view title, std::pair<int, int> size,

@@ -39,10 +39,9 @@ namespace tutorial {
     struct FrameTransient {
         FrameTransient(VulkanCore* vulkan, vk::UniqueCommandBuffer& command_buffer)
             : command_buffer(std::move(command_buffer)),
-              image_available(vulkan->get_logical_device().createSemaphoreUnique({})),
-              render_finished(vulkan->get_logical_device().createSemaphoreUnique({})),
-              in_flight(
-                  vulkan->get_logical_device().createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })),
+              image_available(vulkan->logical_device->createSemaphoreUnique({})),
+              render_finished(vulkan->logical_device->createSemaphoreUnique({})),
+              in_flight(vulkan->logical_device->createFenceUnique({ vk::FenceCreateFlagBits::eSignaled })),
               ubo(vulkan) {}
 
         vk::UniqueCommandBuffer command_buffer;

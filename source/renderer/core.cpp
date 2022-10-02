@@ -70,9 +70,8 @@ namespace tutorial {
         return vk::createInstanceUnique(instance_ci);
     }
 
-    std::unique_ptr<vk::PhysicalDevice>
-    VulkanCore::pick_physical_device(const vk::SurfaceKHR& surface) const {
-        auto devices = m_instance->enumeratePhysicalDevices();
+    vk::PhysicalDevice VulkanCore::pick_physical_device(const vk::SurfaceKHR& surface) const {
+        auto devices = instance->enumeratePhysicalDevices();
         std::pair<vk::PhysicalDevice, uint32_t> best_device{};
 
         auto device_is_compatible = [this, surface](const vk::PhysicalDevice& device) {
@@ -133,7 +132,7 @@ namespace tutorial {
             throw std::runtime_error("failed to find a suitable GPU!");
         }
 
-        return std::make_unique<vk::PhysicalDevice>(best_device.first);
+        return best_device.first;
     }
 
     vk::UniqueDevice VulkanCore::create_logical_device() const {
@@ -143,13 +142,13 @@ namespace tutorial {
 
         constexpr std::array queue_priorities{ 1.0F };
         std::vector<vk::DeviceQueueCreateInfo> queue_cis;
-        for (auto index : m_queue_family_indices.set()) {
+        for (auto index : queue_family_indices.set()) {
             queue_cis.push_back(vk::DeviceQueueCreateInfo({}, index, queue_priorities));
         }
 
         std::vector device_extensions(required_device_extensions.begin(), required_device_extensions.end());
 
-        for (auto available_extension : m_physical_device->enumerateDeviceExtensionProperties()) {
+        for (auto available_extension : physical_device.enumerateDeviceExtensionProperties()) {
             for (auto portability_extension : device_portability_extensions) {
                 if (std::string_view(available_extension.extensionName) == portability_extension) {
                     device_extensions.emplace_back(portability_extension.data());
@@ -166,39 +165,30 @@ namespace tutorial {
             device_ci.setPEnabledLayerNames(validation_layers);
         }
 
-        return m_physical_device->createDeviceUnique(device_ci);
+        return physical_device.createDeviceUnique(device_ci);
     }
 
     vk::UniqueCommandPool VulkanCore::create_command_pool() const {
         vk::CommandPoolCreateInfo ci{};
         ci.setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
-        ci.setQueueFamilyIndex(m_queue_family_indices.graphics.value());
-        return m_logical_device->createCommandPoolUnique(ci);
+        ci.setQueueFamilyIndex(queue_family_indices.graphics.value());
+        return logical_device->createCommandPoolUnique(ci);
     }
 
     void VulkanCore::initialise_devices(const vk::SurfaceKHR& surface) {
-        if (devices_initialised) {
+        if (m_devices_initialised) {
             return;
         }
 
-        m_physical_device = pick_physical_device(surface);
-        m_queue_family_indices = QueueFamilyIndices(*m_physical_device, surface);
-        m_logical_device = create_logical_device();
-        m_command_pool = create_command_pool();
-        devices_initialised = true;
-    }
-
-    std::pair<vk::Queue, vk::Queue> VulkanCore::get_queues() const {
-        if (!devices_initialised) {
-            throw std::runtime_error("trying to get queues without a device initialised!");
-        }
-
-        return { m_logical_device->getQueue(m_queue_family_indices.graphics.value(), 0),
-                 m_logical_device->getQueue(m_queue_family_indices.present.value(), 0) };
+        physical_device = pick_physical_device(surface);
+        queue_family_indices = QueueFamilyIndices(physical_device, surface);
+        logical_device = create_logical_device();
+        command_pool = create_command_pool();
+        m_devices_initialised = true;
     }
 
     vk::SampleCountFlagBits VulkanCore::get_max_msaa_samples() const {
-        auto properties = m_physical_device->getProperties();
+        auto properties = physical_device.getProperties();
         auto counts =
             properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
         if (counts & vk::SampleCountFlagBits::e64) {
@@ -222,8 +212,8 @@ namespace tutorial {
         return vk::SampleCountFlagBits::e1;
     }
 
-    uint32_t VulkanCore::find_memory_type(uint32_t filter, vk::MemoryPropertyFlags flags) {
-        auto properties = m_physical_device->getMemoryProperties();
+    uint32_t VulkanCore::find_memory_type(uint32_t filter, vk::MemoryPropertyFlags flags) const {
+        auto properties = physical_device.getMemoryProperties();
 
         for (uint32_t i = 0; i < properties.memoryTypeCount; i++) {
             if ((filter & (1 << i)) > 0 && (properties.memoryTypes[i].propertyFlags & flags) == flags) {
@@ -235,9 +225,10 @@ namespace tutorial {
     }
 
     vk::Format VulkanCore::find_supported_format(const std::vector<vk::Format>& candidates,
-                                                 vk::ImageTiling tiling, vk::FormatFeatureFlags features) {
+                                                 vk::ImageTiling tiling,
+                                                 vk::FormatFeatureFlags features) const {
         for (auto format : candidates) {
-            auto properties = m_physical_device->getFormatProperties(format);
+            auto properties = physical_device.getFormatProperties(format);
 
             if (tiling == vk::ImageTiling::eLinear &&
                 (properties.linearTilingFeatures & features) == features) {
@@ -254,35 +245,35 @@ namespace tutorial {
 
     std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory>
     VulkanCore::create_buffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                              vk::MemoryPropertyFlags properties) {
+                              vk::MemoryPropertyFlags properties) const {
         std::pair<vk::UniqueBuffer, vk::UniqueDeviceMemory> buffer_pair;
 
         vk::BufferCreateInfo ci{};
         ci.setSize(size);
         ci.setUsage(usage);
         ci.setSharingMode(vk::SharingMode::eExclusive);
-        buffer_pair.first = m_logical_device->createBufferUnique(ci);
+        buffer_pair.first = logical_device->createBufferUnique(ci);
 
-        auto mem_req = m_logical_device->getBufferMemoryRequirements(*buffer_pair.first);
+        auto mem_req = logical_device->getBufferMemoryRequirements(*buffer_pair.first);
         vk::MemoryAllocateInfo ai{};
         ai.setAllocationSize(mem_req.size);
         ai.setMemoryTypeIndex(find_memory_type(mem_req.memoryTypeBits, properties));
-        buffer_pair.second = m_logical_device->allocateMemoryUnique(ai);
+        buffer_pair.second = logical_device->allocateMemoryUnique(ai);
 
-        m_logical_device->bindBufferMemory(*buffer_pair.first, *buffer_pair.second, 0);
+        logical_device->bindBufferMemory(*buffer_pair.first, *buffer_pair.second, 0);
         return std::move(buffer_pair);
     }
 
     void VulkanCore::copy_to_memory(const vk::DeviceMemory& memory, const void* source, size_t size,
-                                    size_t offset) {
-        void* destination = m_logical_device->mapMemory(memory, offset, size);
+                                    size_t offset) const {
+        void* destination = logical_device->mapMemory(memory, offset, size);
         memcpy(destination, source, size);
-        m_logical_device->unmapMemory(memory);
+        logical_device->unmapMemory(memory);
     }
 
     void VulkanCore::copy_buffer(const vk::Queue& queue, const vk::Buffer& destination,
                                  const vk::Buffer& source, vk::DeviceSize size, vk::DeviceSize dst_offset,
-                                 vk::DeviceSize src_offset) {
+                                 vk::DeviceSize src_offset) const {
         vk::BufferCopy copy_region{};
         copy_region.setSize(size);
         copy_region.setDstOffset(dst_offset);
