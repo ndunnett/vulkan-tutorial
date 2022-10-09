@@ -1,8 +1,5 @@
 #include "window.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
 namespace tutorial {
     Window::Window(VulkanCore* vulkan, std::string_view title, std::pair<int, int> size,
                    const std::vector<std::pair<int, int>>& hints)
@@ -20,19 +17,6 @@ namespace tutorial {
         if (!m_window) {
             throw std::runtime_error("failed to create GLFW window!");
         }
-
-        const std::vector<Vertex> vertices{
-            { { -0.5F, -0.5F, 0.0F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-            { { 0.5F, -0.5F, 0.0F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-            { { 0.5F, 0.5F, 0.0F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-            { { -0.5F, 0.5F, 0.0F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } },
-            { { -0.5F, -0.5F, -0.2F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-            { { 0.5F, -0.5F, -0.2F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-            { { 0.5F, 0.5F, -0.2F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-            { { -0.5F, 0.5F, -0.2F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } }
-        };
-
-        const std::vector<uint16_t> indices{ 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4 };
 
         m_surface = create_surface();
         vulkan->initialise_devices(*m_surface);
@@ -53,8 +37,8 @@ namespace tutorial {
         m_sampler = create_sampler();
         m_frames = std::make_unique<FrameTransients>(vulkan);
 
-        m_texture = create_texture("textures/texture.jpg");
-        m_object = std::make_unique<Object>(vulkan, m_graphics_queue, vertices, indices);
+        m_object = std::make_unique<Object>(vulkan, m_graphics_queue, "models/viking_room.obj",
+                                            "textures/viking_room.png");
 
         m_descriptor_pool = create_descriptor_pool();
         m_descriptor_sets = create_descriptor_sets();
@@ -117,43 +101,6 @@ namespace tutorial {
         }
 
         m_frames->next_frame();
-    }
-
-    std::unique_ptr<ImageResource> Window::create_texture(std::string_view path) {
-        int width = 0;
-        int height = 0;
-        int channels = 0;
-        stbi_uc* pixels = stbi_load(path.data(), &width, &height, &channels, STBI_rgb_alpha);
-
-        if (!pixels) {
-            throw std::runtime_error("failed to load texture image!");
-        }
-
-        size_t memory_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
-        auto [staging_buffer, staging_memory] = vulkan->create_buffer(
-            memory_size, vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-        vulkan->copy_to_memory(*staging_memory, pixels, memory_size);
-        stbi_image_free(pixels);
-
-        std::pair<uint32_t, uint32_t> image_size{ width, height };
-        ImageProperties properties{ image_size,
-                                    1,
-                                    vk::SampleCountFlagBits::e1,
-                                    vk::Format::eR8G8B8A8Srgb,
-                                    vk::ImageTiling::eOptimal,
-                                    vk::ImageAspectFlagBits::eColor,
-                                    vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
-        auto image = std::make_unique<ImageResource>(vulkan, properties);
-
-        image->transition_layout(m_graphics_queue, vk::ImageLayout::eUndefined,
-                                 vk::ImageLayout::eTransferDstOptimal);
-        image->copy_buffer(m_graphics_queue, *staging_buffer, image_size);
-        image->transition_layout(m_graphics_queue, vk::ImageLayout::eTransferDstOptimal,
-                                 vk::ImageLayout::eShaderReadOnlyOptimal);
-
-        return std::move(image);
     }
 
     vk::UniqueSurfaceKHR Window::create_surface() const {
@@ -413,7 +360,7 @@ namespace tutorial {
 
             vk::DescriptorImageInfo image_info{};
             image_info.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
-            image_info.setImageView(*m_texture->view);
+            image_info.setImageView(*m_object->texture->view);
             image_info.setSampler(*m_sampler);
 
             vk::WriteDescriptorSet sampler_write{};
@@ -614,20 +561,9 @@ namespace tutorial {
         frame.command_buffer->setViewport(0, viewport);
         frame.command_buffer->setScissor(0, scissor);
 
-        // for (const auto& object : m_objects) {
-        //     constexpr std::array no_offset{ vk::DeviceSize(0) };
-        //     frame.command_buffer->bindVertexBuffers(0, *object.vertex_buffer, no_offset);
-        //     frame.command_buffer->bindIndexBuffer(*object.index_buffer, 0, vk::IndexType::eUint16);
-        //     frame.command_buffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_pipeline_layout,
-        //     0,
-        //                                              *m_descriptor_sets.at(m_frames->current_index()),
-        //                                              nullptr);
-        //     frame.command_buffer->drawIndexed(object.index_count, 1, 0, 0, 0);
-        // }
-
         constexpr std::array no_offset{ vk::DeviceSize(0) };
         frame.command_buffer->bindVertexBuffers(0, *m_object->vertex_buffer, no_offset);
-        frame.command_buffer->bindIndexBuffer(*m_object->index_buffer, 0, vk::IndexType::eUint16);
+        frame.command_buffer->bindIndexBuffer(*m_object->index_buffer, 0, vk::IndexType::eUint32);
         frame.command_buffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *m_pipeline_layout, 0,
                                                  *m_descriptor_sets.at(m_frames->current_index()), nullptr);
         frame.command_buffer->drawIndexed(m_object->index_count, 1, 0, 0, 0);

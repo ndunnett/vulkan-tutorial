@@ -1,5 +1,10 @@
 #include "resources.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
 namespace tutorial {
     UboResource::UboResource(VulkanCore* vulkan) {
         std::tie(buffer, memory) = vulkan->create_buffer(
@@ -184,10 +189,89 @@ namespace tutorial {
         commands.buffer->copyBufferToImage(buffer, *image, vk::ImageLayout::eTransferDstOptimal, copy_region);
     }
 
-    Object::Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices,
-                   const std::vector<uint16_t>& indices)
-        : index_count(indices.size()) {
+    Object::Object(VulkanCore* vulkan, const vk::Queue& queue, std::string_view model_path,
+                   std::string_view texture_path)
+        : vulkan(vulkan), queue(queue) {
+        texture = create_texture(texture_path);
+        load_model(model_path);
+    }
+
+    std::unique_ptr<ImageResource> Object::create_texture(std::string_view path) {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        stbi_uc* pixels = stbi_load(path.data(), &width, &height, &channels, STBI_rgb_alpha);
+
+        if (!pixels) {
+            throw std::runtime_error("failed to load texture image!");
+        }
+
+        size_t memory_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+        auto [staging_buffer, staging_memory] = vulkan->create_buffer(
+            memory_size, vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        vulkan->copy_to_memory(*staging_memory, pixels, memory_size);
+        stbi_image_free(pixels);
+
+        std::pair<uint32_t, uint32_t> image_size{ width, height };
+        ImageProperties properties{ image_size,
+                                    1,
+                                    vk::SampleCountFlagBits::e1,
+                                    vk::Format::eR8G8B8A8Srgb,
+                                    vk::ImageTiling::eOptimal,
+                                    vk::ImageAspectFlagBits::eColor,
+                                    vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
+        auto image = std::make_unique<ImageResource>(vulkan, properties);
+
+        image->transition_layout(queue, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+        image->copy_buffer(queue, *staging_buffer, image_size);
+        image->transition_layout(queue, vk::ImageLayout::eTransferDstOptimal,
+                                 vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        return std::move(image);
+    }
+
+    void Object::load_model(std::string_view path) {
+        tinyobj::attrib_t attrib{};
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn{};
+        std::string err{};
+
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.data())) {
+            throw std::runtime_error(warn + err);
+        }
+
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        std::unordered_map<Vertex, uint32_t> unique_vertices{};
+
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex{};
+
+                vertex.pos = { attrib.vertices[3 * index.vertex_index + 0],
+                               attrib.vertices[3 * index.vertex_index + 1],
+                               attrib.vertices[3 * index.vertex_index + 2] };
+
+                vertex.tex_coord = { attrib.texcoords[2 * index.texcoord_index + 0],
+                                     1.0F - attrib.texcoords[2 * index.texcoord_index + 1] };
+
+                vertex.color = { 1.0F, 1.0F, 1.0F };
+
+                if (!unique_vertices.contains(vertex)) {
+                    unique_vertices[vertex] = static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+
+                indices.push_back(unique_vertices[vertex]);
+            }
+        }
+
+        index_count = indices.size();
         size_t vertex_buffer_size = sizeof(Vertex) * vertices.size();
+        size_t index_buffer_size = sizeof(uint32_t) * indices.size();
 
         auto [vertex_staging_buffer, vertex_staging_memory] = vulkan->create_buffer(
             vertex_buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
@@ -199,8 +283,6 @@ namespace tutorial {
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal);
         vulkan->copy_buffer(queue, *vertex_buffer, *vertex_staging_buffer, vertex_buffer_size);
-
-        size_t index_buffer_size = sizeof(uint16_t) * indices.size();
 
         auto [index_staging_buffer, index_staging_memory] = vulkan->create_buffer(
             index_buffer_size, vk::BufferUsageFlagBits::eTransferSrc,

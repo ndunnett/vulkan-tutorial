@@ -11,15 +11,10 @@ namespace tutorial {
 
         void rebuild_swapchain();
         void draw_frame();
-        std::unique_ptr<ImageResource> create_texture(std::string_view path);
 
         template<class T>
         std::pair<T, T> get_size() const {
             return { static_cast<T>(m_extent.width), static_cast<T>(m_extent.height) };
-        }
-
-        inline void add_object(const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices) {
-            m_objects.emplace_back(vulkan, m_graphics_queue, vertices, indices);
         }
 
         inline bool should_close() const {
@@ -85,9 +80,6 @@ namespace tutorial {
         std::vector<vk::UniqueDescriptorSet> m_descriptor_sets;
         bool m_framebuffer_resized = false;
 
-        std::vector<Object> m_objects;
-
         std::unique_ptr<Object> m_object = nullptr;
-        std::unique_ptr<ImageResource> m_texture = nullptr;
     };
 }

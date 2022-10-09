@@ -76,14 +76,22 @@ namespace tutorial {
         VulkanCore* vulkan = nullptr;
     };
 
-    struct Object {
-        Object(VulkanCore* vulkan, const vk::Queue& queue, const std::vector<Vertex>& vertices,
-               const std::vector<uint16_t>& indices);
+    class Object {
+    public:
+        Object(VulkanCore* vulkan, const vk::Queue& queue, std::string_view model_path,
+               std::string_view texture_path);
+        std::unique_ptr<ImageResource> create_texture(std::string_view path);
+        void load_model(std::string_view path);
 
+        std::unique_ptr<ImageResource> texture;
         vk::UniqueBuffer vertex_buffer;
         vk::UniqueDeviceMemory vertex_memory;
         vk::UniqueBuffer index_buffer;
         vk::UniqueDeviceMemory index_memory;
         uint32_t index_count = 0;
+
+    private:
+        VulkanCore* vulkan = nullptr;
+        const vk::Queue& queue;
     };
 }
