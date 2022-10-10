@@ -34,7 +34,6 @@ namespace tutorial {
         // m_color_image = create_color_image();
         m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
-        m_sampler = create_sampler();
         m_frames = std::make_unique<FrameTransients>(vulkan);
 
         m_object = std::make_unique<Object>(vulkan, m_graphics_queue, "models/viking_room.obj",
@@ -361,7 +360,7 @@ namespace tutorial {
             vk::DescriptorImageInfo image_info{};
             image_info.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
             image_info.setImageView(*m_object->texture->view);
-            image_info.setSampler(*m_sampler);
+            image_info.setSampler(*m_object->sampler);
 
             vk::WriteDescriptorSet sampler_write{};
             sampler_write.setDstSet(*descriptor_sets.at(i));
@@ -470,29 +469,6 @@ namespace tutorial {
         }
 
         return std::move(framebuffers);
-    }
-
-    vk::UniqueSampler Window::create_sampler() const {
-        auto properties = vulkan->physical_device.getProperties();
-
-        vk::SamplerCreateInfo ci{};
-        ci.setMagFilter(vk::Filter::eLinear);
-        ci.setMinFilter(vk::Filter::eLinear);
-        ci.setAddressModeU(vk::SamplerAddressMode::eRepeat);
-        ci.setAddressModeV(vk::SamplerAddressMode::eRepeat);
-        ci.setAddressModeW(vk::SamplerAddressMode::eRepeat);
-        ci.setAnisotropyEnable(VK_TRUE);
-        ci.setMaxAnisotropy(properties.limits.maxSamplerAnisotropy);
-        ci.setBorderColor(vk::BorderColor::eIntOpaqueBlack);
-        ci.setUnnormalizedCoordinates(VK_FALSE);
-        ci.setCompareEnable(VK_FALSE);
-        ci.setCompareOp(vk::CompareOp::eAlways);
-        ci.setMipmapMode(vk::SamplerMipmapMode::eLinear);
-        ci.setMipLodBias(0.0F);
-        ci.setMinLod(0.0F);
-        ci.setMaxLod(static_cast<float>(1));
-
-        return vulkan->logical_device->createSamplerUnique(ci);
     }
 
     void Window::update_size() {

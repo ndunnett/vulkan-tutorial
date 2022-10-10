@@ -66,6 +66,7 @@ namespace tutorial {
                                vk::ImageLayout new_layout);
         void copy_buffer(const vk::Queue& queue, const vk::Buffer& buffer,
                          std::pair<uint32_t, uint32_t> image_size);
+        void generate_mipmaps(const vk::Queue& queue);
 
         ImageProperties properties;
         vk::UniqueImage image;
@@ -80,10 +81,12 @@ namespace tutorial {
     public:
         Object(VulkanCore* vulkan, const vk::Queue& queue, std::string_view model_path,
                std::string_view texture_path);
-        std::unique_ptr<ImageResource> create_texture(std::string_view path);
+        std::unique_ptr<ImageResource> create_texture(std::string_view path) const;
         void load_model(std::string_view path);
+        vk::UniqueSampler create_sampler(const ImageResource& image) const;
 
         std::unique_ptr<ImageResource> texture;
+        vk::UniqueSampler sampler;
         vk::UniqueBuffer vertex_buffer;
         vk::UniqueDeviceMemory vertex_memory;
         vk::UniqueBuffer index_buffer;

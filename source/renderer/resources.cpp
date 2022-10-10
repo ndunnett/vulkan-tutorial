@@ -189,14 +189,94 @@ namespace tutorial {
         commands.buffer->copyBufferToImage(buffer, *image, vk::ImageLayout::eTransferDstOptimal, copy_region);
     }
 
+    void ImageResource::generate_mipmaps(const vk::Queue& queue) {
+        if (properties.mip_levels == 1) {
+            return transition_layout(queue, vk::ImageLayout::eTransferDstOptimal,
+                                     vk::ImageLayout::eShaderReadOnlyOptimal);
+        }
+
+        auto format_properties = vulkan->physical_device.getFormatProperties(properties.format);
+
+        if (!(format_properties.optimalTilingFeatures &
+              vk::FormatFeatureFlagBits::eSampledImageFilterLinear)) {
+            throw std::runtime_error("texture image format does not support linear blitting!");
+        }
+
+        auto commands = vulkan->get_single_time_commands(queue);
+
+        vk::ImageMemoryBarrier barrier{};
+        barrier.setImage(*image);
+        barrier.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+        barrier.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+        barrier.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+        std::array barriers{ barrier };
+
+        auto mip_width = static_cast<int32_t>(properties.size.first);
+        auto mip_height = static_cast<int32_t>(properties.size.second);
+
+        for (uint32_t i = 1; i < properties.mip_levels; i++) {
+            barriers.at(0).subresourceRange.baseMipLevel = i - 1;
+            barriers.at(0).setOldLayout(vk::ImageLayout::eTransferDstOptimal);
+            barriers.at(0).setNewLayout(vk::ImageLayout::eTransferSrcOptimal);
+            barriers.at(0).setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+            barriers.at(0).setDstAccessMask(vk::AccessFlagBits::eTransferRead);
+
+            commands.buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                             vk::PipelineStageFlagBits::eTransfer, {}, nullptr, nullptr,
+                                             barriers);
+
+            const std::array src_offsets{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ mip_width, mip_height, 1 } };
+            const std::array dst_offsets{ vk::Offset3D{ 0, 0, 0 },
+                                          vk::Offset3D{ mip_width > 1 ? mip_width / 2 : 1,
+                                                        mip_height > 1 ? mip_height / 2 : 1, 1 } };
+
+            vk::ImageBlit blit{};
+            blit.setSrcOffsets(src_offsets);
+            blit.setSrcSubresource({ vk::ImageAspectFlagBits::eColor, i - 1, 0, 1 });
+            blit.setDstOffsets(dst_offsets);
+            blit.setDstSubresource({ vk::ImageAspectFlagBits::eColor, i, 0, 1 });
+            const std::array blits{ blit };
+
+            commands.buffer->blitImage(*image, vk::ImageLayout::eTransferSrcOptimal, *image,
+                                       vk::ImageLayout::eTransferDstOptimal, blits, vk::Filter::eLinear);
+
+            barriers.at(0).setOldLayout(vk::ImageLayout::eTransferSrcOptimal);
+            barriers.at(0).setNewLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+            barriers.at(0).setSrcAccessMask(vk::AccessFlagBits::eTransferRead);
+            barriers.at(0).setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+
+            commands.buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                             vk::PipelineStageFlagBits::eFragmentShader, {}, nullptr, nullptr,
+                                             barriers);
+
+            if (mip_width > 1) {
+                mip_width /= 2;
+            }
+            if (mip_height > 1) {
+                mip_height /= 2;
+            }
+        }
+
+        barriers.at(0).subresourceRange.baseMipLevel = properties.mip_levels - 1;
+        barriers.at(0).setOldLayout(vk::ImageLayout::eTransferDstOptimal);
+        barriers.at(0).setNewLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+        barriers.at(0).setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+        barriers.at(0).setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+
+        commands.buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                         vk::PipelineStageFlagBits::eFragmentShader, {}, nullptr, nullptr,
+                                         barriers);
+    }
+
     Object::Object(VulkanCore* vulkan, const vk::Queue& queue, std::string_view model_path,
                    std::string_view texture_path)
         : vulkan(vulkan), queue(queue) {
         texture = create_texture(texture_path);
+        sampler = create_sampler(*texture);
         load_model(model_path);
     }
 
-    std::unique_ptr<ImageResource> Object::create_texture(std::string_view path) {
+    std::unique_ptr<ImageResource> Object::create_texture(std::string_view path) const {
         int width = 0;
         int height = 0;
         int channels = 0;
@@ -215,19 +295,20 @@ namespace tutorial {
 
         std::pair<uint32_t, uint32_t> image_size{ width, height };
         ImageProperties properties{ image_size,
-                                    1,
+                                    static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1,
                                     vk::SampleCountFlagBits::e1,
                                     vk::Format::eR8G8B8A8Srgb,
                                     vk::ImageTiling::eOptimal,
                                     vk::ImageAspectFlagBits::eColor,
-                                    vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                                    vk::ImageUsageFlagBits::eTransferSrc |
+                                        vk::ImageUsageFlagBits::eTransferDst |
+                                        vk::ImageUsageFlagBits::eSampled,
                                     vk::MemoryPropertyFlagBits::eDeviceLocal };
         auto image = std::make_unique<ImageResource>(vulkan, properties);
 
         image->transition_layout(queue, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
         image->copy_buffer(queue, *staging_buffer, image_size);
-        image->transition_layout(queue, vk::ImageLayout::eTransferDstOptimal,
-                                 vk::ImageLayout::eShaderReadOnlyOptimal);
+        image->generate_mipmaps(queue);
 
         return std::move(image);
     }
@@ -293,5 +374,28 @@ namespace tutorial {
             index_buffer_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal);
         vulkan->copy_buffer(queue, *index_buffer, *index_staging_buffer, index_buffer_size);
+    }
+
+    vk::UniqueSampler Object::create_sampler(const ImageResource& image) const {
+        auto properties = vulkan->physical_device.getProperties();
+
+        vk::SamplerCreateInfo ci{};
+        ci.setMagFilter(vk::Filter::eLinear);
+        ci.setMinFilter(vk::Filter::eLinear);
+        ci.setAddressModeU(vk::SamplerAddressMode::eRepeat);
+        ci.setAddressModeV(vk::SamplerAddressMode::eRepeat);
+        ci.setAddressModeW(vk::SamplerAddressMode::eRepeat);
+        ci.setAnisotropyEnable(VK_TRUE);
+        ci.setMaxAnisotropy(properties.limits.maxSamplerAnisotropy);
+        ci.setBorderColor(vk::BorderColor::eIntOpaqueBlack);
+        ci.setUnnormalizedCoordinates(VK_FALSE);
+        ci.setCompareEnable(VK_FALSE);
+        ci.setCompareOp(vk::CompareOp::eAlways);
+        ci.setMipmapMode(vk::SamplerMipmapMode::eLinear);
+        ci.setMipLodBias(0.0F);
+        ci.setMinLod(0.0F);
+        ci.setMaxLod(static_cast<float>(image.properties.mip_levels));
+
+        return vulkan->logical_device->createSamplerUnique(ci);
     }
 }

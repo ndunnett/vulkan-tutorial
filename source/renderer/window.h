@@ -48,7 +48,6 @@ namespace tutorial {
         // std::unique_ptr<ImageResource> create_color_image() const;
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
-        vk::UniqueSampler create_sampler() const;
 
         void update_size();
         void get_swapchain_details();
@@ -69,7 +68,6 @@ namespace tutorial {
         std::vector<vk::UniqueImageView> m_swapchain_views;
         vk::UniqueRenderPass m_render_pass{};
         std::vector<vk::UniqueFramebuffer> m_framebuffers;
-        vk::UniqueSampler m_sampler{};
         vk::UniqueDescriptorSetLayout m_descriptor_set_layout{};
         vk::UniquePipelineLayout m_pipeline_layout{};
         vk::UniquePipeline m_graphics_pipeline{};
