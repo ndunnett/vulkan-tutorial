@@ -20,7 +20,7 @@ namespace tutorial {
 
         m_surface = create_surface();
         vulkan->initialise_devices(*m_surface);
-        // m_msaa_samples = vulkan->get_max_msaa_samples();
+        m_msaa_samples = vulkan->get_max_msaa_samples();
         m_graphics_queue = vulkan->logical_device->getQueue(vulkan->queue_family_indices.graphics.value(), 0);
         m_present_queue = vulkan->logical_device->getQueue(vulkan->queue_family_indices.present.value(), 0);
         get_swapchain_details();
@@ -31,7 +31,7 @@ namespace tutorial {
         m_descriptor_set_layout = create_descriptor_set_layout();
         m_pipeline_layout = create_pipeline_layout();
         m_graphics_pipeline = create_graphics_pipeline();
-        // m_color_image = create_color_image();
+        m_color_image = create_color_image();
         m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
         m_frames = std::make_unique<FrameTransients>(vulkan);
@@ -57,7 +57,7 @@ namespace tutorial {
         m_swapchain = create_swapchain(*m_swapchain);
         m_swapchain_images = vulkan->logical_device->getSwapchainImagesKHR(*m_swapchain);
         m_swapchain_views = create_swapchain_views();
-        // m_color_image = create_color_image();
+        m_color_image = create_color_image();
         m_depth_image = create_depth_image();
         m_framebuffers = create_framebuffers();
     }
@@ -146,35 +146,29 @@ namespace tutorial {
         depth_attachment_ref.setAttachment(1);
         depth_attachment_ref.setLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-        // vk::AttachmentDescription color_attachment_resolve{};
-        // color_attachment_resolve.setFormat(m_surface_format.format);
-        // color_attachment_resolve.setSamples(vk::SampleCountFlagBits::e1);
-        // color_attachment_resolve.setLoadOp(vk::AttachmentLoadOp::eDontCare);
-        // color_attachment_resolve.setStoreOp(vk::AttachmentStoreOp::eStore);
-        // color_attachment_resolve.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
-        // color_attachment_resolve.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
-        // color_attachment_resolve.setInitialLayout(vk::ImageLayout::eUndefined);
-        // color_attachment_resolve.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+        vk::AttachmentDescription color_attachment_resolve{};
+        color_attachment_resolve.setFormat(m_surface_format.format);
+        color_attachment_resolve.setSamples(vk::SampleCountFlagBits::e1);
+        color_attachment_resolve.setLoadOp(vk::AttachmentLoadOp::eDontCare);
+        color_attachment_resolve.setStoreOp(vk::AttachmentStoreOp::eStore);
+        color_attachment_resolve.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+        color_attachment_resolve.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+        color_attachment_resolve.setInitialLayout(vk::ImageLayout::eUndefined);
+        color_attachment_resolve.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
 
-        // vk::AttachmentReference color_attachment_resolve_ref{};
-        // color_attachment_resolve_ref.setAttachment(2);
-        // color_attachment_resolve_ref.setLayout(vk::ImageLayout::eColorAttachmentOptimal);
+        vk::AttachmentReference color_attachment_resolve_ref{};
+        color_attachment_resolve_ref.setAttachment(2);
+        color_attachment_resolve_ref.setLayout(vk::ImageLayout::eColorAttachmentOptimal);
 
         vk::SubpassDescription subpass{};
         subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
         subpass.setColorAttachments(color_attachment_ref);
         subpass.setPDepthStencilAttachment(&depth_attachment_ref);
-        // subpass.setResolveAttachments(color_attachment_resolve_ref);
+        subpass.setResolveAttachments(color_attachment_resolve_ref);
 
         vk::SubpassDependency dependency{};
         dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
         dependency.setDstSubpass(0);
-        dependency.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
-        dependency.setSrcAccessMask(vk::AccessFlagBits::eNone);
-        dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
-        dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
-        // dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
-        // dependency.setDstSubpass(0);
         dependency.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput |
                                    vk::PipelineStageFlagBits::eEarlyFragmentTests);
         dependency.setSrcAccessMask(vk::AccessFlagBits::eNone);
@@ -183,7 +177,7 @@ namespace tutorial {
         dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite |
                                     vk::AccessFlagBits::eDepthStencilAttachmentWrite);
 
-        const std::array attachments{ color_attachment, depth_attachment };
+        const std::array attachments{ color_attachment, depth_attachment, color_attachment_resolve };
 
         vk::RenderPassCreateInfo render_pass_ci{};
         render_pass_ci.setAttachments(attachments);
@@ -271,13 +265,6 @@ namespace tutorial {
             vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
             vk::ColorComponentFlagBits::eA);
         color_blend_attachment.setBlendEnable(VK_FALSE);
-        // color_blend_attachment.setBlendEnable(VK_TRUE);
-        // color_blend_attachment.setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha);
-        // color_blend_attachment.setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
-        // color_blend_attachment.setColorBlendOp(vk::BlendOp::eAdd);
-        // color_blend_attachment.setSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-        // color_blend_attachment.setDstAlphaBlendFactor(vk::BlendFactor::eZero);
-        // color_blend_attachment.setAlphaBlendOp(vk::BlendOp::eAdd);
 
         vk::PipelineColorBlendStateCreateInfo color_blend_ci{};
         color_blend_ci.setLogicOpEnable(VK_FALSE);
@@ -426,18 +413,18 @@ namespace tutorial {
         return std::move(views);
     }
 
-    // std::unique_ptr<ImageResource> Window::create_color_image() const {
-    //     ImageProperties properties{ get_size<uint32_t>(),
-    //                                 1,
-    //                                 m_msaa_samples,
-    //                                 m_surface_format.format,
-    //                                 vk::ImageTiling::eOptimal,
-    //                                 vk::ImageAspectFlagBits::eColor,
-    //                                 vk::ImageUsageFlagBits::eTransientAttachment |
-    //                                     vk::ImageUsageFlagBits::eColorAttachment,
-    //                                 vk::MemoryPropertyFlagBits::eDeviceLocal };
-    //     return std::make_unique<ImageResource>(vulkan, properties);
-    // }
+    std::unique_ptr<ImageResource> Window::create_color_image() const {
+        ImageProperties properties{ get_size<uint32_t>(),
+                                    1,
+                                    m_msaa_samples,
+                                    m_surface_format.format,
+                                    vk::ImageTiling::eOptimal,
+                                    vk::ImageAspectFlagBits::eColor,
+                                    vk::ImageUsageFlagBits::eTransientAttachment |
+                                        vk::ImageUsageFlagBits::eColorAttachment,
+                                    vk::MemoryPropertyFlagBits::eDeviceLocal };
+        return std::make_unique<ImageResource>(vulkan, properties);
+    }
 
     std::unique_ptr<ImageResource> Window::create_depth_image() const {
         ImageProperties properties{ get_size<uint32_t>(),
@@ -458,7 +445,7 @@ namespace tutorial {
         std::vector<vk::UniqueFramebuffer> framebuffers;
 
         for (const auto& image_view : m_swapchain_views) {
-            const std::array attachments{ *image_view, *m_depth_image->view };
+            const std::array attachments{ *m_color_image->view, *m_depth_image->view, *image_view };
             vk::FramebufferCreateInfo ci{};
             ci.setRenderPass(*m_render_pass);
             ci.setAttachments(attachments);

@@ -45,7 +45,7 @@ namespace tutorial {
         std::vector<vk::UniqueDescriptorSet> create_descriptor_sets() const;
         vk::UniqueSwapchainKHR create_swapchain(const vk::SwapchainKHR& old_swapchain = VK_NULL_HANDLE) const;
         std::vector<vk::UniqueImageView> create_swapchain_views() const;
-        // std::unique_ptr<ImageResource> create_color_image() const;
+        std::unique_ptr<ImageResource> create_color_image() const;
         std::unique_ptr<ImageResource> create_depth_image() const;
         std::vector<vk::UniqueFramebuffer> create_framebuffers() const;
 
@@ -71,7 +71,7 @@ namespace tutorial {
         vk::UniqueDescriptorSetLayout m_descriptor_set_layout{};
         vk::UniquePipelineLayout m_pipeline_layout{};
         vk::UniquePipeline m_graphics_pipeline{};
-        // std::unique_ptr<ImageResource> m_color_image;
+        std::unique_ptr<ImageResource> m_color_image;
         std::unique_ptr<ImageResource> m_depth_image;
         std::unique_ptr<FrameTransients> m_frames;
         vk::UniqueDescriptorPool m_descriptor_pool{};
