@@ -39,10 +39,9 @@ target_link_libraries(dependencies INTERFACE
 )
 
 # Add Vulkan to interface library
-find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
+find_package(Vulkan)
 target_link_libraries(dependencies INTERFACE
     Vulkan::Vulkan
-    Vulkan::shaderc_combined
 )
 target_include_directories(dependencies SYSTEM INTERFACE
     ${Vulkan_INCLUDE_DIR}
