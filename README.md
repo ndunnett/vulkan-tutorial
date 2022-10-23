@@ -1,1 +1,1 @@
-This is the [Vulkan Tutorial](https://vulkan-tutorial.com/) fully completed by myself, using snake case rather than camel case and with a few things done in slightly more modern C++ way than what the tutorial suggests. See the "start" branch for a starting point for the tutorial, or the "refactor" branch for the same application but refactored.
+This is the [Vulkan Tutorial](https://vulkan-tutorial.com/) fully completed. See the "start" branch for a starting point for the tutorial, or the "rewrite" branch for the same application but written with Vulkan-Hpp.
