@@ -2,4 +2,4 @@ Basic template using CMake to build a project for completing the [Vulkan Tutoria
 
 All dependencies are configured with CMake. As long as you have the Vulkan SDK and CMake installed and set up correctly, it should just work™. The contents of the "assets" directory (ie. textures, models, shaders, etc.) will be copied into the directory containing the executable during build time.
 
-See the "completed" branch for the completed tutorial, or the "rewrite" branch for my refactored version of the tutorial using Vulkan-Hpp.
+See the "completed" branch for the completed tutorial (though it did not start from this template exactly) or the "rewrite" branch for my refactored version of the tutorial using Vulkan-Hpp.
