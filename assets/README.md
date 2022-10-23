@@ -1,1 +1,1 @@
-Files in this folder (ie. shaders, textures, models, etc.) will be copied to the directory of the executable during build time.
+The contents of this directory (ie. textures, models, shaders, etc.) will be copied into the directory containing the executable during build time.
