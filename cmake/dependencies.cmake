@@ -30,12 +30,19 @@ FetchContent_Declare(
 
 # Add interface library for dependencies
 add_library(dependencies INTERFACE)
-target_compile_options(dependencies INTERFACE -Wno-deprecated-volatile)
+
+# Build header only library and link to interface library
+file(WRITE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/null.cpp "")
+add_library(header_only STATIC ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/null.cpp)
+target_link_libraries(dependencies INTERFACE
+    header_only
+)
 
 # Add Vulkan to interface library
-find_package(Vulkan REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
 target_link_libraries(dependencies INTERFACE
     Vulkan::Vulkan
+    Vulkan::shaderc_combined
 )
 target_include_directories(dependencies SYSTEM INTERFACE
     ${Vulkan_INCLUDE_DIR}
@@ -43,20 +50,19 @@ target_include_directories(dependencies SYSTEM INTERFACE
 
 # Build GLM library and link to interface library
 FetchContent_MakeAvailable(glm_repo)
-include_directories(${glm_repo_SOURCE_DIR})
-target_link_libraries(dependencies INTERFACE
+target_include_directories(header_only SYSTEM PUBLIC
     glm
 )
 
 # Add stb includes to interface library
 FetchContent_MakeAvailable(stb_repo)
-target_include_directories(dependencies SYSTEM INTERFACE
+target_include_directories(header_only SYSTEM PUBLIC
     ${stb_repo_SOURCE_DIR}
 )
 
 # Add tinyobjloader includes to interface library
 FetchContent_MakeAvailable(tinyobjloader_repo)
-target_include_directories(dependencies SYSTEM INTERFACE
+target_include_directories(header_only SYSTEM PUBLIC
     ${tinyobjloader_repo_SOURCE_DIR}
 )
 
@@ -65,7 +71,6 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glfw_repo)
-include_directories(${glfw_repo_SOURCE_DIR})
 target_link_libraries(dependencies INTERFACE
     glfw
 )
