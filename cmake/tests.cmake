@@ -2,10 +2,17 @@ cmake_minimum_required(VERSION 3.24)
 include(CTest)
 include(FetchContent)
 
+# fetch doctest
+FetchContent_Declare(
+    doctest
+    GIT_REPOSITORY "https://github.com/doctest/doctest"
+    GIT_TAG b7c21ec5ceeadb4951b00396fc1e4642dd347e5f # main v2.4.9
+)
+FetchContent_MakeAvailable(doctest)
+
 # interface library
 add_library(test_interface INTERFACE)
-FetchContent_MakeAvailable(doctest_repo)
-target_include_directories(test_interface INTERFACE ${doctest_repo_SOURCE_DIR}/doctest)
+target_include_directories(test_interface INTERFACE ${doctest_SOURCE_DIR}/doctest)
 target_link_libraries(test_interface INTERFACE dependencies)
 target_compile_features(test_interface INTERFACE cxx_std_17)
 
